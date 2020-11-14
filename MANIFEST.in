@@ -1,0 +1,4 @@
+include tpDcc/tools/datalibrary/__logging__.ini
+recursive-include tpDcc/tools/datalibrary/resources/* *.*
+include versioneer.py
+include tpDcc/tools/datalibrary/_version.py

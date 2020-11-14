@@ -1,0 +1,6 @@
+# ===================================================================
+# tpDcc-tools-datalibrary requirements file
+# ===================================================================
+tpDcc-libs-python
+tpDcc-core
+tpDcc-libs-qt
