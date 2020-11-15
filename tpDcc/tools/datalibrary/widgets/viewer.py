@@ -14,6 +14,7 @@ from Qt.QtCore import Qt, Signal, QSize, QEvent
 from Qt.QtWidgets import QApplication, QStyledItemDelegate, QAbstractItemView, QMenu, QAction
 from Qt.QtGui import QCursor, QColor
 
+from tpDcc.managers import resources
 from tpDcc.libs.qt.core import base, contexts as qt_contexts
 from tpDcc.libs.qt.widgets import layouts, toast, action
 
@@ -926,6 +927,7 @@ class DataViewer(base.BaseWidget):
         """
 
         menu = QMenu('Item View', self)
+        menu.setIcon(resources.icon('eye'))
         menu.addSeparator()
 
         # copy_text_menu = self.tree_widget().create_copy_text_menu()

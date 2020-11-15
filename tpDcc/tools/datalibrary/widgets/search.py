@@ -11,11 +11,10 @@ import logging
 from functools import partial
 
 from Qt.QtCore import Qt, Signal, QSize
-from Qt.QtWidgets import QLineEdit, QMenu, QAction
+from Qt.QtWidgets import QStyle, QLineEdit, QMenu, QAction
 from Qt.QtGui import QCursor
 
 from tpDcc.managers import resources
-from tpDcc.libs.qt.core import color, icon
 from tpDcc.libs.qt.widgets import buttons
 
 LOGGER = logging.getLogger('tpDcc-tools-datalibrary')
@@ -34,12 +33,11 @@ class DataSearcherWidget(QLineEdit):
         self._library = None
         self._space_operator = 'and'
 
-        search_icon = resources.icon('search', theme='black')
-        self._icon_btn = buttons.IconButton(search_icon, icon_padding=2, parent=self)
+        self._icon_btn = buttons.BaseButton(parent=self)
+        self._icon_btn.setIcon(resources.icon('search'))
         self._icon_btn.clicked.connect(self._on_icon_clicked)
-        self.set_icon(search_icon)
-        cross_icon = resources.icon('delete', theme='black')
-        self._clear_btn = buttons.IconButton(cross_icon, icon_padding=2, parent=self)
+        self._clear_btn = buttons.BaseButton(parent=self)
+        self._clear_btn.setIcon(resources.icon('delete'))
         self._clear_btn.setCursor(Qt.ArrowCursor)
         self._clear_btn.setToolTip('Clear all search text')
         self._clear_btn.clicked.connect(self._on_clear_clicked)
@@ -51,7 +49,9 @@ class DataSearcherWidget(QLineEdit):
         self.setToolTip(tip)
         self.setStatusTip(tip)
 
-        self.setStyleSheet('border-radius: 10px; padding-left: 2px; padding-right: 2px; border: 2px;')
+        self._icon_btn.setStyleSheet('background-color: transparent')
+        self._clear_btn.setStyleSheet('background-color: transparent')
+        self.setStyleSheet('border-radius: 10px; border: 2px;')
 
     # ============================================================================================================
     # OVERRIDES
@@ -62,7 +62,6 @@ class DataSearcherWidget(QLineEdit):
         Overrides base QLineEdit update function
         """
 
-        self.update_icon_color()
         self.update_clear_button()
 
     def resizeEvent(self, event):
@@ -155,30 +154,6 @@ class DataSearcherWidget(QLineEdit):
 
         return {'name': unique_name, 'operator': self.space_operator(), 'filters': filters}
 
-    def set_icon(self, icon):
-        """
-        Sets the icon for the search widget
-        :param icon: QIcon
-        """
-
-        self._icon_btn.setIcon(icon)
-
-    def set_icon_color(self, color):
-        """
-        Sets the icon color for the search widget icon
-        :param color: QColor
-        """
-
-        btn_icon = self._icon_btn.icon()
-        btn_icon = icon.Icon(btn_icon)
-        btn_icon.set_color(color)
-        self._icon_btn.setIcon(btn_icon)
-
-        clear_icon = self._clear_btn.icon()
-        clear_icon = icon.Icon(clear_icon)
-        clear_icon.set_color(color)
-        self._clear_btn.setIcon(clear_icon)
-
     def update_clear_button(self):
         """
         Updates the clear button depending on the current text
@@ -189,15 +164,6 @@ class DataSearcherWidget(QLineEdit):
             self._clear_btn.show()
         else:
             self._clear_btn.hide()
-
-    def update_icon_color(self):
-        """
-        Updates the icon colors to the current foreground role
-        """
-
-        new_color = self.palette().color(self.foregroundRole())
-        new_color = color.Color.from_color(new_color)
-        self.set_icon_color(new_color)
 
     # ============================================================================================================
     # MENU
@@ -266,6 +232,25 @@ class DataSearcherWidget(QLineEdit):
         space_operator = settings.get('spaceOperator')
         if space_operator:
             self.set_space_operator(space_operator)
+
+    # ============================================================================================================
+    # INTERNAL
+    # ============================================================================================================
+
+    def _search_line_frame_width(self):
+        return self.style().pixelMetric(QStyle.PM_DefaultFrameWidth)
+
+    def _clear_button_padded_width(self):
+        return self._clear_btn.width() + self._search_line_frame_width() * 2
+
+    def _clear_button_padded_height(self):
+        return self._clear_btn.height() + self._search_line_frame_width() * 2
+
+    def _search_button_padded_width(self):
+        return self._icon_btn.width() + self._search_line_frame_width() * 2
+
+    def _search_button_padded_height(self):
+        return self._icon_btn.height() + self._search_line_frame_width() * 2
 
     # ============================================================================================================
     # CALLBACKS

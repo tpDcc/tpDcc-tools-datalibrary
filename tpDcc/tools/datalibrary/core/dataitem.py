@@ -700,29 +700,29 @@ class LibraryDataItem(dataitem.DataItem):
         :param items: list(LibraryItem)
         """
 
-        rename_action = QAction('Rename', menu)
+        rename_action = QAction(resources.icon('rename'), 'Rename', menu)
         rename_action.triggered.connect(self._on_show_rename_dialog)
         menu.addAction(rename_action)
 
-        move_to_action = QAction('Move to', menu)
+        move_to_action = QAction(resources.icon('move'), 'Move to', menu)
         move_to_action.triggered.connect(self._on_move_dialog)
         menu.addAction(move_to_action)
 
-        copy_path_action = QAction('Copy Path', menu)
+        copy_path_action = QAction(resources.icon('copy'), 'Copy Path', menu)
         copy_path_action.triggered.connect(self._on_copy_path)
         menu.addAction(copy_path_action)
 
         if self.library_window():
-            select_folder_action = QAction('Select Folder', menu)
+            select_folder_action = QAction(resources.icon('select'), 'Select Folder', menu)
             select_folder_action.triggered.connect(self._on_select_folder)
             menu.addAction(select_folder_action)
 
-        show_in_folder_action = QAction('Show in Folder', menu)
+        show_in_folder_action = QAction(resources.icon('folder'), 'Show in Folder', menu)
         show_in_folder_action.triggered.connect(self._on_show_in_folder)
         menu.addAction(show_in_folder_action)
 
         if self.is_deletable():
-            delete_action = QAction('Delete', menu)
+            delete_action = QAction(resources.icon('delete'), 'Delete', menu)
             delete_action.triggered.connect(self._on_show_delete_dialog)
             menu.addSeparator()
             menu.addAction(delete_action)
@@ -739,7 +739,7 @@ class LibraryDataItem(dataitem.DataItem):
             return
 
         menu.addSeparator()
-        overwrite_action = QAction('Overwrite', menu)
+        overwrite_action = QAction(resources.icon('replace'), 'Overwrite', menu)
         overwrite_action.triggered.connect(self._on_overwrite)
         menu.addAction(overwrite_action)
 

@@ -17,7 +17,7 @@ from functools import partial
 
 from Qt.QtCore import Qt, Signal, QObject, QPoint
 from Qt.QtWidgets import QSizePolicy, QWidget, QFrame, QSplitter, QMenu, QAction, QFileDialog, QDialogButtonBox
-from Qt.QtGui import QCursor, QKeyEvent, QStatusTipEvent
+from Qt.QtGui import QCursor, QColor, QKeyEvent, QStatusTipEvent
 
 from tpDcc.managers import resources, configs
 from tpDcc.libs.python import osplatform, fileio, folder, path as path_utils
@@ -500,6 +500,7 @@ class LibraryWindow(base.BaseWidget):
         action = self.toolbar_widget().find_action('Filters')
         icon = resources.icon('filter', theme='black')
         # icon.set_color(self.icon_color())
+        icon.set_color(QColor(255, 255, 255, 255))
         if self._filter_by_menu.is_active():
             icon.set_badge(18, 1, 9, 9, color=consts.ICON_BADGE_COLOR)
         action.setIcon(icon)
@@ -1619,6 +1620,7 @@ class LibraryWindow(base.BaseWidget):
         else:
             new_icon = resources.icon('view_compact', theme='black')
         # new_icon.set_color(self.icon_color())
+        new_icon.set_color(QColor(255, 255, 255, 255))
         action.setIcon(new_icon)
 
     # ============================================================================================================
@@ -1894,7 +1896,7 @@ class LibraryWindow(base.BaseWidget):
                 if self.trash_enabled():
                     edit_menu.addSeparator()
                     callback = partial(self.show_move_items_to_trash_dialog, items)
-                    action = QAction('Move to Trash', edit_menu)
+                    action = QAction(resources.icon('trash'), 'Move to Trash', edit_menu)
                     action.setEnabled(not self.is_trash_selected())
                     action.triggered.connect(callback)
                     edit_menu.addAction(action)
@@ -1915,10 +1917,10 @@ class LibraryWindow(base.BaseWidget):
         context_menu.setTitle('Settings')
         context_menu.setIcon(settings_icon)
 
-        settings_action = context_menu.addAction('Settings')
+        settings_action = context_menu.addAction(settings_icon, 'Settings')
         settings_action.triggered.connect(self._on_show_settings_dialog)
 
-        sync_action = context_menu.addAction('Sync')
+        sync_action = context_menu.addAction(resources.icon('sync'), 'Sync')
         sync_action.triggered.connect(self._on_sync)
 
         context_menu.addSeparator()
@@ -1958,27 +1960,27 @@ class LibraryWindow(base.BaseWidget):
 
         context_menu.addSeparator()
 
-        save_settings_action = QAction('Save Settings', context_menu)
+        save_settings_action = QAction(resources.icon('save'), 'Save Settings', context_menu)
         save_settings_action.triggered.connect(self.save_settings)
         context_menu.addAction(save_settings_action)
 
-        reset_settings_action = QAction('Reset Settings', context_menu)
+        reset_settings_action = QAction(resources.icon('reset'), 'Reset Settings', context_menu)
         reset_settings_action.triggered.connect(self.reset_settings)
         context_menu.addAction(reset_settings_action)
 
-        open_settings_action = QAction('Open Settings', context_menu)
+        open_settings_action = QAction(resources.icon('open'), 'Open Settings', context_menu)
         open_settings_action.triggered.connect(self.open_settings)
         context_menu.addAction(open_settings_action)
 
         if self.TEMP_PATH_MENU_ENABLED:
-            temp_path_action = QAction('Open Temp Path', context_menu)
+            temp_path_action = QAction(resources.icon('open'), 'Open Temp Path', context_menu)
             temp_path_action.triggered.connect(self.open_temp_path)
             context_menu.addAction(temp_path_action)
 
         context_menu.addSeparator()
 
         if self.trash_enabled():
-            show_trash_action = QAction('Show Trash Folder', context_menu)
+            show_trash_action = QAction(resources.icon('trash'), 'Show Trash Folder', context_menu)
             show_trash_action.setEnabled(self.trash_folder_exists())
             show_trash_action.setCheckable(True)
             show_trash_action.setChecked(self.is_trash_folder_visible())
@@ -1987,7 +1989,7 @@ class LibraryWindow(base.BaseWidget):
 
         context_menu.addSeparator()
 
-        recursive_search_action = QAction('Enable Recursive Search', context_menu)
+        recursive_search_action = QAction(resources.icon('repeat'), 'Enable Recursive Search', context_menu)
         recursive_search_action.setCheckable(True)
         recursive_search_action.setChecked(self.is_recursive_search_enabled())
         recursive_search_action.triggered[bool].connect(self.set_recursive_search_enabled)
@@ -2165,7 +2167,7 @@ class LibraryWindow(base.BaseWidget):
         :param settings_menu: Menu
         """
 
-        change_path_action = QAction('Change Path', settings_menu)
+        change_path_action = QAction(resources.icon('change'), 'Change Path', settings_menu)
         change_path_action.triggered.connect(self._on_show_change_path_dialog)
         settings_menu.addAction(change_path_action)
         settings_menu.addSeparator()

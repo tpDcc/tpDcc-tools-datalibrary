@@ -19,7 +19,7 @@ from Qt.QtGui import QCursor, QColor, QPixmap, QPainter, QBrush
 from tpDcc.managers import resources
 from tpDcc.libs.python import path as path_utils
 from tpDcc.libs.qt.core import base, color, pixmap, menu, contexts as qt_contexts
-from tpDcc.libs.qt.widgets import layouts, buttons, lineedit
+from tpDcc.libs.qt.widgets import layouts, buttons, search
 
 LOGGER = logging.getLogger('tpDcc-tools-datalibrary')
 
@@ -52,16 +52,18 @@ class SidebarWidget(base.BaseWidget):
         self._title_widget.setLayout(title_layout)
 
         buttons_layout = layouts.HorizontalLayout(spacing=0, margins=(0, 0, 0, 0))
-        self._title_button = buttons.BaseButton('Folders', parent=self)
+        self._title_button = buttons.BaseButton(parent=self)
+        self._title_button.setIcon(resources.icon('reset'))
         self._menu_button = buttons.BaseButton('...', parent=self)
         buttons_layout.addWidget(self._title_button)
+        buttons_layout.addStretch()
         buttons_layout.addWidget(self._menu_button)
 
-        self._filter_line = lineedit.BaseLineEdit(parent=self)
-        self._filter_line.setVisible(False)
+        self._filter_search = search.SearchFindWidget(parent=self)
+        self._filter_search.setVisible(False)
 
         title_layout.addLayout(buttons_layout)
-        title_layout.addWidget(self._filter_line)
+        title_layout.addWidget(self._filter_search)
 
         self._tree_widget = SidebarTree(self)
         self._tree_widget.installEventFilter(self)
@@ -69,7 +71,7 @@ class SidebarWidget(base.BaseWidget):
         self._tree_widget.itemRenamed = self.itemRenamed
         self.itemSelectionChanged = self._tree_widget.itemSelectionChanged
 
-        self._filter_line.setText(self._tree_widget.filter_text())
+        self._filter_search.set_text(self._tree_widget.filter_text())
 
         self.main_layout.addWidget(self._title_widget)
         self.main_layout.addWidget(self._tree_widget)
@@ -77,14 +79,14 @@ class SidebarWidget(base.BaseWidget):
     def setup_signals(self):
         self._title_button.clicked.connect(self.clear_selection)
         self._menu_button.clicked.connect(self._on_show_settings_menu)
-        self._filter_line.textChanged.connect(self._on_search_changed)
+        self._filter_search.textChanged.connect(self._on_search_changed)
 
     def eventFilter(self, obj, event):
         if event.type() == QEvent.KeyPress:
             text = event.text().strip()
             if text.isalpha() or text.isdigit():
-                if text and not self._filter_line.hasFocus():
-                    self._filter_line.setText(text)
+                if text and not self._filter_search.search_line.hasFocus():
+                    self._filter_search.set_text(text)
                 self.set_filter_visible(True)
                 self._previous_filter_text = text
 
@@ -121,8 +123,8 @@ class SidebarWidget(base.BaseWidget):
         :param flag: bool
         """
 
-        self._filter_line.setVisible(flag)
-        self._filter_line.setFocus()
+        self._filter_search.setVisible(flag)
+        self._filter_search.search_line.setFocus()
         if not flag and bool(self._tree_widget.filter_text()):
             self._tree_widget.set_filter_text('')
         else:
@@ -173,13 +175,13 @@ class SidebarWidget(base.BaseWidget):
         return self._tree_widget.filter_text()
 
     def set_filter_text(self, text):
-        self._filter_line.setText(text)
+        self._filter_search.set_text(text)
 
     def refresh_filter(self):
-        self._tree_widget.set_filter_text(self._filter_line.text())
+        self._tree_widget.set_filter_text(self._filter_search.get_text())
 
     def is_filter_visible(self):
-        return bool(self._tree_widget.filter_text()) or self._filter_line.isVisible()
+        return bool(self._tree_widget.filter_text()) or self._filter_search.isVisible()
 
     def icons_visible(self):
         return self._tree_widget.icons_visible()
@@ -258,7 +260,7 @@ class SidebarWidget(base.BaseWidget):
         """
 
         self.set_filter_visible(flag)
-        self._filter_line.selectAll()
+        self._filter_search.select_all()
 
     def _create_settings_menu(self, settings_menu):
         """
@@ -267,19 +269,19 @@ class SidebarWidget(base.BaseWidget):
         :return: Menu
         """
 
-        show_filter_action = settings_menu.addAction('Show Filter')
+        show_filter_action = settings_menu.addAction(resources.icon('filter'), 'Show Filter')
         show_filter_action.setCheckable(True)
         show_filter_action.setChecked(self.is_filter_visible())
         show_filter_action_callback = partial(self._filter_visible_trigger, not self.is_filter_visible())
         show_filter_action.triggered.connect(show_filter_action_callback)
 
-        show_icons_action = settings_menu.addAction('Show Icons')
+        show_icons_action = settings_menu.addAction(resources.icon('icons'), 'Show Icons')
         show_icons_action.setCheckable(True)
         show_icons_action.setChecked(self.icons_visible())
         show_icons_action_callback = partial(self.set_icons_visible, not self.icons_visible())
         show_icons_action.triggered.connect(show_icons_action_callback)
 
-        show_root_folder_action = settings_menu.addAction('Show Root Folder')
+        show_root_folder_action = settings_menu.addAction(resources.icon('folder_tree'), 'Show Root Folder')
         show_root_folder_action.setCheckable(True)
         show_root_folder_action.setChecked(self.is_root_visible())
         show_root_folder_action_callback = partial(self.set_root_visible, not self.is_root_visible())
