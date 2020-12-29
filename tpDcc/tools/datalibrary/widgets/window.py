@@ -15,21 +15,21 @@ import logging
 import operator
 from functools import partial
 
-from Qt.QtCore import Qt, Signal, QObject, QPoint
-from Qt.QtWidgets import QSizePolicy, QWidget, QFrame, QSplitter, QMenu, QAction, QFileDialog, QDialogButtonBox
-from Qt.QtGui import QCursor, QColor, QKeyEvent, QStatusTipEvent
+from Qt.QtCore import Qt, Signal, QPoint
+from Qt.QtWidgets import QSizePolicy, QWidget, QFrame, QSplitter, QFileDialog, QDialogButtonBox, QMenu, QAction
+from Qt.QtGui import QCursor, QColor, QIcon, QKeyEvent, QStatusTipEvent
 
-from tpDcc.managers import resources, configs
-from tpDcc.libs.python import osplatform, fileio, folder, path as path_utils
-from tpDcc.libs.qt.core import qtutils, base, icon, menu, animation, decorators as qt_decorators
-from tpDcc.libs.qt.core import contexts as qt_contexts
-from tpDcc.libs.qt.widgets import layouts, stack, toolbar, action, messagebox
+from tpDcc.managers import configs, resources
+from tpDcc.libs.python import python, osplatform, fileio, folder, path as path_utils
+from tpDcc.libs.resources.core import icon
+from tpDcc.libs.qt.core import qtutils, base, animation, menu, decorators as qt_decorators
+from tpDcc.libs.qt.widgets import layouts, stack, toolbar, messagebox
+from tpDcc.libs.datalibrary.core import datalib
 
-from tpDcc.libs.datalibrary.core import datalib, utils, consts as lib_consts
-from tpDcc.libs.datalibrary.managers import data
-from tpDcc.tools.datalibrary.core import consts
-from tpDcc.tools.datalibrary.widgets import viewer, search, sidebar, status, menus
-from tpDcc.tools.datalibrary.widgets.menus import filter, group, sort
+from tpDcc.tools.datalibrary.core import consts, utils, factory
+from tpDcc.tools.datalibrary.core.views import item as items_view
+from tpDcc.tools.datalibrary.widgets import viewer, search, sidebar, status
+from tpDcc.tools.datalibrary.widgets.menus import filter, group, sort, libraries
 
 LOGGER = logging.getLogger('tpDcc-tools-datalibrary')
 
@@ -42,22 +42,14 @@ class SidebarFrame(QFrame):
     pass
 
 
-class GlobalSignal(QObject):
-    """
-    Signals that are triggered by all library instances
-    """
-
-    folderSelectionChanged = Signal(object, object)
-
-
 class LibraryWindow(base.BaseWidget):
 
-    DEFAULT_NAME = lib_consts.DEFAULT_LIBRARY_NAME
+    DEFAULT_NAME = consts.DEFAULT_LIBRARY_NAME
 
     DEFAULT_SETTINGS = {
         "library": {
             "sort_by": ["name:asc"],
-            "group_by": ["category:asc"]
+            "group_by": ["type:asc"]
         },
         "paneSizes": [130, 280, 180],
         "trashFolderVisible": False,
@@ -95,17 +87,14 @@ class LibraryWindow(base.BaseWidget):
     GROUPBY_MENU_CLASS = group.GroupByMenu
     FILTERBY_MENU_CLASS = filter.FilterByMenu
 
-    globalSignal = GlobalSignal()
-    loaded = Signal()
-    lockChanged = Signal(object)
-    itemRenamed = Signal(str, str)
     itemSelectionChanged = Signal(object)
-    folderRenamed = Signal(str, str)
     folderSelectionChanged = Signal(object)
 
-    def __init__(self, name='', json_settings_file_path=None, parent=None):
+    def __init__(
+            self, settings, name='', items_factory=None, json_settings_file_path='', library_path='',  parent=None):
 
         self._dpi = 1.0
+        self._settings = settings
         self._name = name or self.DEFAULT_NAME
         self._items = list()
         self._is_locked = False
@@ -117,10 +106,13 @@ class LibraryWindow(base.BaseWidget):
         self._lock_reg_exp = None
         self._unlock_reg_exp = None
         self._kwargs = dict()
+        self._path = None
+        self._menu_items = list()
 
         self._preview_widget = None
         self._new_item_widget = None
         self._current_item = None
+        self._items_factory = items_factory
 
         self._items_hidden_count = 0
         self._items_visible_count = 0
@@ -130,25 +122,37 @@ class LibraryWindow(base.BaseWidget):
         self._preview_widget_visible = True
         self._status_widget_visible = True
 
-        self._settings_file_path = json_settings_file_path
+        self._libraries_menu = None
+        self._settings_file_path = json_settings_file_path or utils.settings_path()
 
-        super(LibraryWindow, self).__init__(parent=parent)
+        super(LibraryWindow, self).__init__(parent)
 
-        self.set_library(self.LIBRARY_CLASS())
+        # TODO: THIS IS FOR DEV
+        library_path = r'D:\rigs\rigscript\chimp\data.db'
+        self.set_library(library_path or self._settings.get('last_path'))
 
         self.set_refresh_enabled(True)
 
         self.update_view_button()
         self.update_filters_button()
-        # self.update_preview_widget()
-
-        self.set_path(r'D:\rigscript_projects\dwarfWarrior_test')
+        self.update_preview_widget()
 
         self.set_dpi(1.0)
 
     # ============================================================================================================
+    # PROPERTIES
+    # ============================================================================================================
+
+    @property
+    def factory(self):
+        return self._items_factory
+
+    # ============================================================================================================
     # OVERRIDES
     # ============================================================================================================
+
+    def get_main_layout(self):
+        return layouts.VerticalLayout(spacing=0, margins=(0, 0, 0, 0))
 
     def ui(self):
         super(LibraryWindow, self).ui()
@@ -156,7 +160,7 @@ class LibraryWindow(base.BaseWidget):
         self.setMinimumWidth(5)
         self.setMinimumHeight(5)
 
-        self._stack = stack.SlidingOpacityStackedWidget()
+        self._stack = stack.SlidingStackedWidget()
         self.main_layout.addWidget(self._stack)
 
         self._sidebar_frame = SidebarFrame(self)
@@ -184,7 +188,6 @@ class LibraryWindow(base.BaseWidget):
         self._filter_by_menu = self.FILTERBY_MENU_CLASS(self)
         self._status_widget = self.STATUS_WIDGET_CLASS(self)
         self._sidebar_widget = self.SIDEBAR_WIDGET_CLASS(self)
-        self._sidebar_widget.setContextMenuPolicy(Qt.CustomContextMenu)
         self._sidebar_widget.setContextMenuPolicy(Qt.CustomContextMenu)
         sidebar_frame_lyt.addWidget(self._sidebar_widget)
 
@@ -245,35 +248,36 @@ class LibraryWindow(base.BaseWidget):
 
         if not self.is_loaded():
             self._is_loaded = True
-            self.set_refresh_enabled(True)
             self.load_settings()
+            self.set_refresh_enabled(True)
 
-    def show(self, **kwargs):
-        """
-        Overrides LibraryWindow show function
-        """
+    # ============================================================================================================
+    # CLASS METHODS
+    # ============================================================================================================
 
-        super(LibraryWindow, self).show()
-        self.setWindowState(Qt.WindowNoState)
-        self.raise_()
-
-    def closeEvent(self, event):
+    @classmethod
+    def create_action(cls, item_class, menu, library_window):
         """
-        Overrides LibraryWindow closeEvent function
-        """
-
-        self.save_settings()
-        super(LibraryWindow, self).closeEvent(event)
-
-    def keyReleaseEvent(self, event):
-        """
-        Overrides LibraryWindow keyReleaseEvent function
-        :param event: QKeyEvent
+        Returns the action to be displayed when the user clicks the "Add New Item" icon
+        :param item_class: str
+        :param menu: QMenu
+        :param library_window: LibraryWindow
+        :return: QAction
         """
 
-        for item in self.selected_items():
-            item.key_release_event(event)
-        super(LibraryWindow, self).keyReleaseEvent(event)
+        if not item_class.menu_name():
+            return
+
+        show_save_widget = library_window.factory.get_show_save_widget_function(item_class)
+
+        icon_name = os.path.splitext(item_class.MENU_ICON)[0] if item_class.MENU_ICON else None
+        action_icon = resources.icon(icon_name) if icon_name else QIcon()
+        callback = partial(show_save_widget, item_class, library_window)
+        action = QAction(action_icon, item_class.menu_name(), menu)
+        action.triggered.connect(callback)
+        menu.addAction(action)
+
+        return action
 
     # ============================================================================================================
     # BASE
@@ -298,15 +302,34 @@ class LibraryWindow(base.BaseWidget):
     def set_library(self, library):
         """
         Sets data library to use
-        :param library: DataLibrary
+        :param library: str or DataLibrary
         """
 
-        if library == self._library:
-            return
+        if python.is_string(library):
+            if self._library and library == self._library.identifier:
+                return
 
-        self._library = library
-        self._library.dataChanged.connect(self.refresh)
-        self._library.searchTimeFinished.connect(self._on_search_finished)
+            if not library:
+                LOGGER.warning('Given library path "{}" does not exists!'.format(library))
+                return
+
+            if not os.path.isfile(library):
+                self._library = self.LIBRARY_CLASS.create(library)
+            else:
+                self._library = self.LIBRARY_CLASS.load(library)
+            self._library.add_scan_location(path_utils.clean_path(os.path.join(os.path.dirname(library))))
+        else:
+            self._library = library
+
+        plugin_locations = self._library.plugin_locations() or list()
+
+        # Create factory to hold all available item views
+        if not self._items_factory:
+            self._items_factory = factory.ItemsFactory(paths=plugin_locations)
+
+        self._path = path_utils.clean_path(os.path.dirname(self.database_path()))
+
+        self._library.sync()
 
         self._sort_by_menu.set_library(self._library)
         self._group_by_menu.set_library(self._library)
@@ -315,49 +338,43 @@ class LibraryWindow(base.BaseWidget):
         self._search_widget.set_library(self._library)
         self._sidebar_widget.set_library(self._library)
 
-    def path(self):
+        self._library.dataChanged.connect(self.refresh)
+
+    def database_path(self):
         """
-        Returns the path being used by the library
+        Returns path to the database showed by the window
         :return: str
         """
 
         if not self._library:
             return
 
-        return self._library.path()
+        return self._library.identifier
+
+    def path(self):
+        """
+        Returns the path being used by the library
+        :return: str
+        """
+
+        return self._path
 
     def set_path(self, path):
-        """
-        Set the path being used by the library
-        :param path: str
-        """
+        path = path_utils.clean_path(path)
 
-        path = '' if not path else path_utils.real_path(path)
         if path == self.path():
             return
 
+        self._path = path
+
         library = self.library()
-        library.set_path(path)
 
-        if not path_utils.exists(library.database_path()):
-            self.sync(force_start=True)
-
-        # self.sync(force_start=True, force_search=True)
-
-        if self._stack.currentIndex() != 0:
-            self._stack.setCurrentIndex(0)
+        if not os.path.exists(self.database_path()):
+            self.sync()
 
         self.refresh()
         self.library().search()
         self.update_preview_widget()
-
-    def set_kwargs(self, kwargs):
-        """
-        Sets the keyword arguments used to open the library window
-        :param kwargs: dict
-        """
-
-        self._kwargs.update(kwargs)
 
     def is_loaded(self):
         """
@@ -498,12 +515,14 @@ class LibraryWindow(base.BaseWidget):
         """
 
         action = self.toolbar_widget().find_action('Filters')
-        icon = resources.icon('filter', theme='black')
+        filter_icon = resources.icon('filter', theme='black')
+        if filter_icon.isNull():
+            return
         # icon.set_color(self.icon_color())
-        icon.set_color(QColor(255, 255, 255, 255))
+        filter_icon.set_color(QColor(255, 255, 255, 255))
         if self._filter_by_menu.is_active():
-            icon.set_badge(18, 1, 9, 9, color=consts.ICON_BADGE_COLOR)
-        action.setIcon(icon)
+            filter_icon.set_badge(18, 1, 9, 9, color=consts.ICON_BADGE_COLOR)
+        action.setIcon(filter_icon)
 
     def update_lock(self):
         """
@@ -517,15 +536,34 @@ class LibraryWindow(base.BaseWidget):
         re_locked = re.compile(self.lock_reg_exp() or '')
         re_unlocked = re.compile(self.unlock_reg_exp() or '')
 
-        print('Updating Lock ...')
+        if osplatform.get_user(lower=True) in superusers:
+            self.set_locked(False)
+        elif re_locked.match('') and re_unlocked.match(''):
+            if superusers:
+                self.set_locked(True)
+            else:
+                self.set_locked(False)
+        else:
+            # Lock/Unlock folders matching regex
+            folders = self.selected_folder_paths()
+            if not re_locked.match(''):
+                for folder_found in folders:
+                    if re_locked.search(folder_found):
+                        self.set_locked(True)
+                        return
+                self.set_locked(False)
+            if not re_unlocked.match(''):
+                for folder_found in folders:
+                    if re_unlocked.search(folder_found):
+                        self.set_locked(False)
+                        return
 
     @qt_decorators.show_wait_cursor
-    def sync(self, force_start=False, force_search=False):
+    def sync(self, force_start=True, force_search=True):
         """
         Sync any data that might be out of date with the model
         """
 
-        @qt_decorators.show_wait_cursor
         def _sync():
             start_time = time.time()
             self.library().sync(progress_callback=self._set_progress_bar_value)
@@ -538,7 +576,7 @@ class LibraryWindow(base.BaseWidget):
                 animation.fade_out_widget(progress_bar, duration=500, on_finished=progress_bar.close)
 
             if force_search and self.library():
-                self.library().set_dirty(True)
+                # self.library().set_dirty(True)
                 self.library().search()
 
         progress_bar = self.status_widget().progress_bar()
@@ -578,7 +616,7 @@ class LibraryWindow(base.BaseWidget):
         """
 
         dpi_enabled = self.DPI_ENABLED
-        datalib_config = configs.get_library_config('tpDcc-libs-datalibrary')
+        datalib_config = configs.get_library_config('tpDcc-tools-datalibrary')
         if datalib_config:
             dpi_enabled = datalib_config.get('dpi_enabled') or dpi_enabled
 
@@ -598,7 +636,7 @@ class LibraryWindow(base.BaseWidget):
     def set_dpi(self, dpi):
         """
         Sets the current DPI for library widget
-        :param value: float
+        :param dpi: float
         """
 
         if not self.is_dpi_enabled():
@@ -642,6 +680,21 @@ class LibraryWindow(base.BaseWidget):
         self.update_create_item_button()
         self.update_window_title()
         self.lockChanged.emit(flag)
+
+    def update_create_item_button(self):
+        """
+        Updates the create item icon depending of the lock status
+        """
+
+        action = self.toolbar_widget().find_action('New Item')
+        if self.is_locked():
+            icon = resources.icon('lock')
+            action.setEnabled(False)
+        else:
+            icon = resources.icon('plus')
+            action.setEnabled(True)
+        # icon.set_color(self.icon_color())
+        action.setIcon(icon)
 
     # ============================================================================================================
     # TOOLBAR WIDGET
@@ -806,12 +859,13 @@ class LibraryWindow(base.BaseWidget):
         current_data = dict()
         root = self.path()
 
-        queries = [{'filters': [('type', 'is', 'Folder')]}]
+        queries = [{'filters': [('folder', 'is', True)]}]
 
         items = self.library().find_items(queries)
-
         for item in items:
-            current_data[item.path()] = item.item_data()
+            if not item:
+                continue
+            current_data[item.format_identifier()] = item.data()
 
         self.sidebar_widget().set_data(current_data, root=root)
 
@@ -890,93 +944,6 @@ class LibraryWindow(base.BaseWidget):
         """
 
         return self.viewer().selected_items()
-
-    def add_item(self, item, select=False):
-        """
-        Add the given item to the viewer widget
-        :param item: LibraryItem
-        :param select: bool
-        """
-
-        self.add_items([item], select=select)
-
-    def add_items(self, items, select=False):
-        """
-        Add the given items to the viewer widget
-        :param items: list(LibraryItem)
-        :param select: bool
-        """
-
-        self.viewer().add_items(items)
-        self._items.extend(items)
-
-        if select:
-            self.select_Items(items)
-            self.scroll_to_selected_item()
-
-    def create_items_from_urls(self, urls):
-        """
-        Return a new list of items from the given urls
-        :param urls: list(QUrl)
-        :return: list(LibraryItem)
-        """
-
-        return self.library().items_from_urls(urls, library_window=self)
-
-    def select_path(self, path):
-        """
-        Select the item with the given path
-        :param path: str
-        """
-
-        self.select_paths([path])
-
-    def select_paths(self, paths):
-        """
-        Select the items with the given paths
-        :param paths: list(str)
-        """
-
-        selection = self.selected_items()
-        self.clear_preview_widget()
-        self.viewer().clear_selection()
-        self.viewer().select_paths(paths)
-
-        if self.selected_items() != selection:
-            self._on_item_selection_changed()
-
-    def select_items(self, items):
-        """
-        Select the given items
-        :param items: list(LibraryItem)
-        :return:
-        """
-
-        paths = [item.path() for item in items]
-        self.select_paths(paths)
-
-    def scroll_to_selected_item(self):
-        """
-        Scroll the item widget to the selected item
-        """
-
-        self.viewer().scroll_to_selected_item()
-
-    def refresh_selection(self):
-        """
-        Refresh teh current item selection
-        """
-
-        items = self.selected_items()
-        self.viewer().clear_selection()
-        self.select_items(items)
-
-    def clear_items(self):
-        """
-        Remove all the loaded items
-        """
-
-        self.viewer().clear()
 
     # ============================================================================================================
     # STATUS WIDGET
@@ -1125,15 +1092,10 @@ class LibraryWindow(base.BaseWidget):
             return
 
         self.set_new_item_widget_visible(True)
-        # self.viewer().clear_selection()
 
-        # fsize, rsize, psize = self._splitter.sizes()
-        # if psize < 150:
-        #     self.set_sizes((fsize, rsize, 180))
-
-        # self.set_preview_widget(create_widget)
         self.set_new_item_widget(create_widget)
-        self.stack.slide_in_index(1)
+        create_widget.cancelled.connect(partial(self._stack.slide_in_index, 0))
+        create_widget.saved.connect(partial(self._stack.slide_in_index, 0))
 
     # ============================================================================================================
     # NEW ITEM WIDGET
@@ -1154,7 +1116,7 @@ class LibraryWindow(base.BaseWidget):
         """
 
         if self._new_item_widget == widget:
-            msg = 'New Item widget already contains widghet {}'.format(widget)
+            msg = 'New Item widget already contains widget {}'.format(widget)
             LOGGER.debug(msg)
         else:
             self.close_new_item_widget()
@@ -1181,10 +1143,10 @@ class LibraryWindow(base.BaseWidget):
         self._new_item_widget_visible = flag
 
         if flag:
-            self.stack.slide_in_index(1)
+            self._stack.slide_in_index(1)
             self._new_item_frame.show()
         else:
-            self.stack.slide_in_index(0)
+            self._stack.slide_in_index(0)
             self._new_item_frame.hide()
 
         self.update_view_button()
@@ -1295,9 +1257,9 @@ class LibraryWindow(base.BaseWidget):
                 'filters': [('path', 'not_contains', consts.TRASH_NAME.title())]
             }
 
-        self.library().add_global_query(query)
-        self.update_sidebar()
-        self.library().search()
+        # self.library().add_global_query(query)
+        # self.update_sidebar()
+        # self.library().search()
 
     def is_trash_selected(self):
         """
@@ -1353,6 +1315,15 @@ class LibraryWindow(base.BaseWidget):
 
         self.viewer().show_toast_message(text, duration)
 
+    def show_success_message(self, text, msecs=None):
+        """
+        Shows success message to the user
+        :param text: str
+        :param msecs: int or None
+        """
+
+        self.status_widget().show_ok_message(text, msecs)
+
     def show_info_message(self, text, msecs=None):
         """
         Shows info message to the user
@@ -1360,7 +1331,7 @@ class LibraryWindow(base.BaseWidget):
         :param msecs: int or None
         """
 
-        self.status_widget().show_info_message(text)
+        self.status_widget().show_info_message(text, msecs)
 
     def show_warning_message(self, text, msecs=None):
         """
@@ -1481,109 +1452,6 @@ class LibraryWindow(base.BaseWidget):
         self.show_error_dialog(title, text)
 
     # ============================================================================================================
-    # DRAG & DROP
-    # ============================================================================================================
-
-    def save_custom_order(self):
-        """
-        Function used for save the custom order
-        """
-
-        self.library().save_item_data(self.items(), emit_data_changed=True)
-
-    def is_custom_order_enabled(self):
-        """
-        Returns whether custom order is enabled or not
-        :return: bool
-        """
-
-        return 'Custom Order' in str(self.library().sort_by())
-
-    def is_move_items_enabled(self):
-        """
-        Returns whether moving items via drag and drop is enabled or not
-        :return: bool
-        """
-
-        paths = self.selected_folder_paths()
-        if len(paths) != 1:
-            return False
-        if self.selected_items():
-            return False
-
-        return True
-
-    def create_move_items_dialog(self):
-        """
-        Creates and returns a dialog for moving items
-        :return: MessageBox
-        """
-
-        dlg = messagebox.create_message_box(
-            self, 'Move or Copy Items?', 'Would you like to copy or move the selected item/s?')
-        dlg.button_box().clear()
-        dlg.add_button('Copy', QDialogButtonBox.AcceptRole)
-        dlg.add_button('Move', QDialogButtonBox.AcceptRole)
-        dlg.add_button('Cancel', QDialogButtonBox.RejectRole)
-
-        return dlg
-
-    def show_move_items_dialog(self, items, target_folder):
-        """
-        Shows the move items dialog for the given items
-        :param items: list(LibraryItem)
-        :param target_folder: target_folder
-        """
-
-        Copy = 0
-        Cancel = 2
-
-        for item in items:
-            if os.path.dirname(item.path()) == target_folder:
-                return
-
-        dlg = self.create_move_items_dialog()
-        res = dlg.exec_()
-        dlg.close()
-
-        if res == Cancel:
-            return
-
-        copy = res == Copy
-
-        self.move_items(items, target_folder, copy=copy)
-
-    def move_items(self, items, target_folder, copy=False, force=False):
-        """
-        Moves the given items to the target folder path
-        :param items: list(LibraryItem)
-        :param target_folder: str
-        :param copy: bool
-        :param force: bool
-        """
-
-        self.viewer().clear_selection()
-        moved_items = list()
-        with qt_contexts.block_signals(self.library()):
-            try:
-                for item in items:
-                    path = target_folder + '/' + os.path.basename(item.path())
-                    if force:
-                        path = utils.generate_unique_path(path)
-                    if copy:
-                        item.copy(path)
-                    else:
-                        item.rename(path)
-                    moved_items.append(item)
-            except Exception as exc:
-                self.show_exception_dialog('Move Error', exc)
-                raise
-
-            self.refresh()
-            self.select_items(moved_items)
-            self.scroll_to_selected_item()
-
-    # ============================================================================================================
     # OTHERS
     # ============================================================================================================
 
@@ -1620,12 +1488,32 @@ class LibraryWindow(base.BaseWidget):
         else:
             new_icon = resources.icon('view_compact', theme='black')
         # new_icon.set_color(self.icon_color())
+        if new_icon.isNull():
+            return
         new_icon.set_color(QColor(255, 255, 255, 255))
         action.setIcon(new_icon)
 
     # ============================================================================================================
     # SETTINGS
     # ============================================================================================================
+
+    def settings_file_path(self):
+        """
+        Returns custom settings file path
+        :return: str
+        """
+
+        return self._settings_file_path
+
+    def set_settings_file_path(self, file_path):
+        """
+        Sets settings file path used by the library
+        :param file_path: str
+        """
+
+        self._settings_file_path = file_path
+
+        self._libraries_menu.set_settings_path(self._settings_file_path)
 
     def settings(self):
         """
@@ -1669,12 +1557,16 @@ class LibraryWindow(base.BaseWidget):
             self.viewer().set_toast_enabled(False)
 
             if not self.path():
-                path = settings_dict.get('path')
+                path = settings.get('path')
                 if path and os.path.exists(path):
                     self.set_path(path)
 
-            dpi = settings_dict.get('dpi', 1.0)
+            dpi = settings.get('dpi', 1.0)
             self.set_dpi(dpi)
+
+            value = settings.get('library')
+            if value is not None:
+                self.library().update_settings(value)
 
             sizes = settings.get('paneSizes')
             if sizes and len(sizes) == 3:
@@ -1711,10 +1603,6 @@ class LibraryWindow(base.BaseWidget):
         finally:
             self.set_refresh_enabled(is_refresh_enabled)
             self.refresh()
-
-        value = settings.get('library')
-        if value is not None:
-            self.library().set_settings(value)
 
         value = settings.get('trashFolderVisible')
         if value is not None:
@@ -1809,7 +1697,7 @@ class LibraryWindow(base.BaseWidget):
 
         self.add_toolbar_action(
             'Filters', resources.icon('filter'),
-            'Filter the current results by type.\nCtrl + Click will hide the ohters and show the selected one.',
+            'Filter the current results by type.\nCtrl + Click will hide the others and show the selected one.',
             callback=self._on_show_filter_by_menu)
 
         self.add_toolbar_action(
@@ -1846,8 +1734,10 @@ class LibraryWindow(base.BaseWidget):
         menu.setIcon(item_icon)
         menu.setTitle('New')
 
-        for data_item_class in sorted(list(data.get_all_data_items().values()), key=operator.attrgetter('MENU_ORDER')):
-            action = data_item_class.create_action(menu, self)
+        all_sorted_data = sorted(list(self.library().get_all_data_plugins()), key=operator.attrgetter('PRIORITY'))
+
+        for data_item_class in all_sorted_data:
+            action = self.create_action(data_item_class, menu, self)
             if action:
                 action_icon = icon.Icon(action.icon())
                 # action_icon.set_color(self.icon_color())
@@ -1877,22 +1767,35 @@ class LibraryWindow(base.BaseWidget):
         :return:
         """
 
-        context_menu = menu.Menu(self)
+        self._menu_items = list()
 
-        item = None
+        context_menu = QMenu(self)
+
+        item_view = None
         if items:
-            item = items[-1]
-            item.context_menu(context_menu)
+            item_data = items[-1]
+            if isinstance(item_data, items_view.ItemView):
+                item_view = item_data
+            else:
+                view_class = self._items_factory.get_view(item_data)
+                if view_class:
+                    item_view = view_class(item_data, library_window=self)
+            if item_view:
+                item_view.context_menu(context_menu)
+
+                # NOTE: We do thos to avoid Python to garbage collect the item views. Otherwise menu functionality
+                # NOTE: related with item views will not work
+                self._menu_items.append(item_view)
 
         if not self.is_locked():
             context_menu.addMenu(self._create_new_item_menu())
-            if item:
+            if item_view:
                 edit_icon = resources.icon('edit')
-                edit_menu = menu.Menu(context_menu)
+                edit_menu = QMenu(self)
                 edit_menu.setTitle('Edit')
                 edit_menu.setIcon(edit_icon)
                 context_menu.addMenu(edit_menu)
-                item.context_edit_menu(edit_menu)
+                item_view.context_edit_menu(edit_menu)
                 if self.trash_enabled():
                     edit_menu.addSeparator()
                     callback = partial(self.show_move_items_to_trash_dialog, items)
@@ -1922,6 +1825,11 @@ class LibraryWindow(base.BaseWidget):
 
         sync_action = context_menu.addAction(resources.icon('sync'), 'Sync')
         sync_action.triggered.connect(self._on_sync)
+
+        context_menu.addSeparator()
+
+        self._libraries_menu = libraries.LibrariesMenu(self._settings_file_path, library_window=self)
+        context_menu.addMenu(self._libraries_menu)
 
         context_menu.addSeparator()
 
@@ -2023,35 +1931,18 @@ class LibraryWindow(base.BaseWidget):
     # CALLBACKS
     # ============================================================================================================
 
-    def _on_show_settings_dialog(self):
-        # TODO: Open settings dialog
-        # If there is an attacher, we use attacher settings view, if not we create it
-        pass
-
-    def _on_sync(self):
-        """
-        Internal callback function that is executed when the user selects the Sync
-        context menu action
-        """
-
-        self.sync(force_search=True)
-
     def _on_show_new_menu(self):
+        """
+        Internal callback function that is called when user right clicks on an item
+        Shows items contextual menu
+        :return: QMenu
+        """
+
         new_menu = self._create_new_item_menu()
         point = self.toolbar_widget().mapToGlobal(self.toolbar_widget().rect().bottomLeft())
         new_menu.show()
 
         return new_menu.exec_(point)
-
-    def _on_show_item_view_menu(self):
-        """
-        Internal callback function when triggered when the user clicks on item view action
-        """
-
-        menu = self.viewer().create_settings_menu()
-        item_view_widget = self.toolbar_widget().find_tool_button('Item View')
-        point = item_view_widget.mapToGlobal(QPoint(0, item_view_widget.height()))
-        menu.exec_(point)
 
     def _on_show_filter_by_menu(self):
         """
@@ -2062,6 +1953,16 @@ class LibraryWindow(base.BaseWidget):
         point = widget.mapToGlobal(QPoint(0, widget.height()))
         self._filter_by_menu.show(point)
         self.update_filters_button()
+
+    def _on_show_item_view_menu(self):
+        """
+        Internal callback function when triggered when the user clicks on item view action
+        """
+
+        menu = self.viewer().create_settings_menu()
+        item_view_widget = self.toolbar_widget().find_tool_button('Item View')
+        point = item_view_widget.mapToGlobal(QPoint(0, item_view_widget.height()))
+        menu.exec_(point)
 
     def _on_show_group_by_menu(self):
         """
@@ -2088,14 +1989,6 @@ class LibraryWindow(base.BaseWidget):
 
         self.toggle_view()
 
-    def _on_item_moved(self, item):
-        """
-        Internal callback function that is triggered when the custom order has changed
-        :param item, LibraryItem
-        """
-
-        self.save_custom_order()
-
     def _on_show_settings_menu(self):
         """
         Internal callback function triggered when the user show settings
@@ -2113,12 +2006,18 @@ class LibraryWindow(base.BaseWidget):
 
         return settings_menu.exec_(point)
 
-    def _on_search_finished(self):
+    def _on_sync(self):
         """
-        Internal callback function that is triggered when an item search operation is completed
+        Internal callback function that is executed when the user selects the Sync
+        context menu action
         """
 
-        self.show_refresh_message()
+        self.sync(force_search=True)
+
+    def _on_show_settings_dialog(self):
+        # TODO: Open settings dialog
+        # If there is an attacher, we use attacher settings view, if not we create it
+        pass
 
     def _on_folder_selection_changed(self):
         """
@@ -2128,7 +2027,7 @@ class LibraryWindow(base.BaseWidget):
         item_path = self.selected_folder_path()
         # self.library().search()
         self.folderSelectionChanged.emit(item_path)
-        self.globalSignal.folderSelectionChanged.emit(self, item_path)
+        # self.globalSignal.folderSelectionChanged.emit(self, item_path)
 
     def _on_item_dropped(self, event):
         """
@@ -2161,6 +2060,9 @@ class LibraryWindow(base.BaseWidget):
 
         return action
 
+    def _test(self):
+        print('hello')
+
     def _on_sidebar_settings_menu_requested(self, settings_menu):
         """
         Internal callback function triggered when sidebar settings menu is requested to show
@@ -2172,34 +2074,11 @@ class LibraryWindow(base.BaseWidget):
         settings_menu.addAction(change_path_action)
         settings_menu.addSeparator()
 
-    @qt_decorators.show_arrow_cursor
-    def _on_show_change_path_dialog(self):
-        """
-        Internal function that opens a file dialog for setting a new root path
-        :return: str
-        """
-
-        path = self.path()
-        directory = path
-        if not directory:
-            directory = os.path.expanduser('~')
-        dialog = QFileDialog(None, Qt.WindowStaysOnTopHint)
-        dialog.setWindowTitle('Choose the root location')
-        dialog.setDirectory(directory)
-        dialog.setFileMode(QFileDialog.DirectoryOnly)
-        if dialog.exec_() == QFileDialog.Accepted:
-            selected_files = dialog.selectedFiles()
-            if selected_files:
-                path = selected_files[0]
-
-        if not path:
-            return
-
-        path = path_utils.normalize_path(path)
-
-        return path
-
     def _on_item_selection_changed(self):
+        """
+        Internal callback function that is triggered when an item is selected or deselected
+        """
+
         item = self.viewer().selected_item()
 
         self.set_preview_widget_from_item(item)
@@ -2213,12 +2092,36 @@ class LibraryWindow(base.BaseWidget):
 
         text = event.text().strip()
 
-        if not text.isalpha() and not text.isdigt():
+        if not text.isalpha() and not text.isdigit():
             return
 
         if text and not self.search_widget().hasFocus():
             self.search_widget().setFocus()
             self.search_widget().setText(text)
+
+    def _on_item_moved(self, item):
+        """
+        Internal callback function that is triggered when the custom order has changed
+        :param item, LibraryItem
+        """
+
+        self.save_custom_order()
+
+    def _on_item_dropped(self, event):
+        """
+        Internal callback function that is triggered when items are dropped on the viewer or sidebar widget
+        :param event: QEvent
+        """
+
+        mime_data = event.mimeData()
+        if mime_data.hasUrls():
+            urls = mime_data.urls()
+            path = self.selected_folder_path()
+            items = self.create_items_from_urls(urls)
+            if self.is_move_items_enabled():
+                self.show_move_items_dialog(items, target_folder=path)
+            elif not self.is_custom_order_enabled():
+                self.show_info_message('Please use sort by "Custom Order" to reorder items!')
 
     def _on_show_items_context_menu(self):
         """
@@ -2228,8 +2131,8 @@ class LibraryWindow(base.BaseWidget):
         :return: QAction
         """
 
-        items = self.viewer().selected_items()
-        menu = self._create_item_context_menu(items)
+        item_views = self.viewer().selected_items()
+        menu = self._create_item_context_menu(item_views)
         point = QCursor.pos()
         point.setX(point.x() + 3)
         point.setY(point.y() + 3)

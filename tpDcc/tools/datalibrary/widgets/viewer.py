@@ -18,12 +18,12 @@ from tpDcc.managers import resources
 from tpDcc.libs.qt.core import base, contexts as qt_contexts
 from tpDcc.libs.qt.widgets import layouts, toast, action
 
-from tpDcc.libs.datalibrary.core import dataitem
-from tpDcc.libs.datalibrary.items import group
 from tpDcc.tools.datalibrary.core import consts
+from tpDcc.tools.datalibrary.core.views import item
+from tpDcc.tools.datalibrary.data import group
 from tpDcc.tools.datalibrary.widgets import listview, treeview
 
-LOGGER = logging.getLogger('tpDcc-tools-datalibrary')
+LOGGER = logging.getLogger('tpDcc-libs-datalibrary')
 
 
 class DataViewerDelegate(QStyledItemDelegate, object):
@@ -46,7 +46,7 @@ class DataViewerDelegate(QStyledItemDelegate, object):
         """
 
         item = self.viewer().item_from_index(index)
-        if isinstance(item, group.GroupDataItem):
+        if isinstance(item, group.GroupDataItemView):
             return item.sizeHint()
 
         return self.viewer().item_size_hint()
@@ -100,7 +100,7 @@ class DataViewer(base.BaseWidget):
     DEFAULT_BACKGROUND_HOVER_COLOR = consts.VIEWER_DEFAULT_BACKGROUND_HOVER_COLOR
     DEFAULT_BACKGROUND_SELECTED_COLOR = consts.VIEWER_DEFAULT_BACKGROUND_SELECTED_COLOR
 
-    LABEL_DISPLAY_OPTION = dataitem.LabelDisplayOption.Under
+    LABEL_DISPLAY_OPTION = item.LabelDisplayOption.Under
 
     TREE_WIDGET_CLASS = treeview.ViewerTreeView
     LIST_VIEW_CLASS = listview.ViewerListView
@@ -113,11 +113,12 @@ class DataViewer(base.BaseWidget):
     groupClicked = Signal(object)
     keyPressed = Signal(object)
 
-    def __init__(self, parent=None):
+    def __init__(self, library_window):
 
         self._dpi = 1
         self._padding = self.DEFAULT_PADDING
         self._library = None
+        self._library_window = library_window
 
         self._tree_widget = None
         self._list_view = None
@@ -135,7 +136,7 @@ class DataViewer(base.BaseWidget):
         self._background_hover_color = self.DEFAULT_BACKGROUND_HOVER_COLOR
         self._background_selected_color = self.DEFAULT_BACKGROUND_SELECTED_COLOR
 
-        super(DataViewer, self).__init__(parent=parent)
+        super(DataViewer, self).__init__(parent=library_window)
 
     # ============================================================================================================
     # OVERRIDES
@@ -236,6 +237,14 @@ class DataViewer(base.BaseWidget):
         self._library = library
         self.set_column_labels(library.field_names())
         library.searchFinished.connect(self._on_update_items)
+
+    def library_window(self):
+        """
+        Returns library window this viewer belongs to
+        :return: LibraryWindow
+        """
+
+        return self._library_window
 
     def label_display_option(self):
         """
@@ -505,7 +514,7 @@ class DataViewer(base.BaseWidget):
         """
 
         self._icon_size = size
-        if self.label_display_option() == dataitem.LabelDisplayOption.Under:
+        if self.label_display_option() == item.LabelDisplayOption.Under:
             w = size.width()
             h = size.width() + self.item_text_height()
             self._item_size_hint = QSize(w, h)
@@ -754,7 +763,7 @@ class DataViewer(base.BaseWidget):
         """
 
         for item in self.items():
-            path = item.id()
+            path = item.path()
             if path in paths:
                 item.setSelected(True)
 
@@ -764,7 +773,7 @@ class DataViewer(base.BaseWidget):
         :param items: list(LibraryItem)
         """
 
-        paths = [item.id() for item in items]
+        paths = [item.path() for item in items]
         self.select_paths(paths)
 
     def clear_selection(self):
@@ -797,7 +806,7 @@ class DataViewer(base.BaseWidget):
         :param children: list(LibraryItem)
         """
 
-        group_item = group.GroupDataItem()
+        group_item = group.GroupDataItemView()
         group_item.set_name(text)
         group_item.set_stretch_to_widget(self)
         group_item.set_children(children)
@@ -816,16 +825,25 @@ class DataViewer(base.BaseWidget):
             try:
                 self.clear_selection()
                 results = self.library().grouped_results()
-                items = list()
+                item_views = list()
                 for group in results:
                     if group != 'None':
                         group_item = self.create_group_item(group)
-                        items.append(group_item)
-                    items.extend(results[group])
-                self.tree_widget().set_items(items)
-                if selected_items:
-                    self.select_items(selected_items)
-                    self.scroll_to_selected_item()
+                        item_views.append(group_item)
+                    for item in results[group]:
+                        view_class = self.library_window().factory.get_view(item)
+                        if not view_class:
+                            continue
+                        item_view = view_class(item, library_window=self.library_window())
+                        item_views.append(item_view)
+
+                if item_views:
+                    self.tree_widget().set_items(item_views)
+                    if selected_items:
+                        self.select_items(selected_items)
+                        self.scroll_to_selected_item()
+                else:
+                    self.clear()
             finally:
                 self.itemSelectionChanged.emit()
 
@@ -957,7 +975,7 @@ class DataViewer(base.BaseWidget):
 
         menu.addAction(action.SeparatorAction('Label Options', menu))
 
-        for option in dataitem.LabelDisplayOption.values():
+        for option in item.LabelDisplayOption.values():
             option_action = QAction(option.title(), menu)
             option_action.setCheckable(True)
             option_action.setChecked(option == self.label_display_option())
@@ -1170,7 +1188,7 @@ class DataViewer(base.BaseWidget):
         :param item: DataItem
         """
 
-        if isinstance(item, group.GroupDataItem):
+        if isinstance(item, group.GroupDataItemView):
             self.groupClicked.emit(item)
         else:
             self.itemClicked.emit(item)

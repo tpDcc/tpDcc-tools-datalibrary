@@ -16,11 +16,11 @@ from Qt.QtGui import QCursor, QFontMetrics, QClipboard
 
 from tpDcc.libs.python import python
 
-from tpDcc.libs.datalibrary.items import group
 from tpDcc.tools.datalibrary.core import consts
+from tpDcc.tools.datalibrary.data import group
 from tpDcc.tools.datalibrary.widgets import mixinview
 
-LOGGER = logging.getLogger('tpDcc-tools-datalibrary')
+LOGGER = logging.getLogger('tpDcc-libs-datalibrary')
 
 
 class ViewerTreeView(mixinview.ViewerViewWidgetMixin, QTreeWidget):
@@ -90,7 +90,7 @@ class ViewerTreeView(mixinview.ViewerViewWidgetMixin, QTreeWidget):
 
         items_list = list()
         for item in self._items():
-            if not isinstance(item, group.GroupDataItem):
+            if not isinstance(item, group.GroupDataItemView):
                 items_list.append(item)
 
         return items_list
@@ -106,7 +106,7 @@ class ViewerTreeView(mixinview.ViewerViewWidgetMixin, QTreeWidget):
         items_ = super(ViewerTreeView, self).selectedItems()
 
         for item in items_:
-            if not isinstance(item, group.GroupDataItem):
+            if not isinstance(item, group.GroupDataItemView):
                 items_list.append(item)
 
         return items_list

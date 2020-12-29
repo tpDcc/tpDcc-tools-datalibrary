@@ -17,7 +17,7 @@ from Qt.QtGui import QCursor
 from tpDcc.managers import resources
 from tpDcc.libs.qt.widgets import buttons
 
-LOGGER = logging.getLogger('tpDcc-tools-datalibrary')
+LOGGER = logging.getLogger('tpDcc-libs-datalibrary')
 
 
 class DataSearcherWidget(QLineEdit):
@@ -35,9 +35,13 @@ class DataSearcherWidget(QLineEdit):
 
         self._icon_btn = buttons.BaseButton(parent=self)
         self._icon_btn.setIcon(resources.icon('search'))
+        self._icon_btn.setObjectName('searchButton')
+        self._icon_btn.setIconSize(QSize(12, 12))
         self._icon_btn.clicked.connect(self._on_icon_clicked)
         self._clear_btn = buttons.BaseButton(parent=self)
         self._clear_btn.setIcon(resources.icon('delete'))
+        self._clear_btn.setObjectName('clearButton')
+        self._clear_btn.setIconSize(QSize(12, 12))
         self._clear_btn.setCursor(Qt.ArrowCursor)
         self._clear_btn.setToolTip('Clear all search text')
         self._clear_btn.clicked.connect(self._on_clear_clicked)
@@ -51,7 +55,7 @@ class DataSearcherWidget(QLineEdit):
 
         self._icon_btn.setStyleSheet('background-color: transparent')
         self._clear_btn.setStyleSheet('background-color: transparent')
-        self.setStyleSheet('border-radius: 10px; border: 2px;')
+        # self.setStyleSheet('border-radius: 13px; border: 2px;')
 
     # ============================================================================================================
     # OVERRIDES
@@ -149,7 +153,7 @@ class DataSearcherWidget(QLineEdit):
         filters = list()
         for filter_ in text.split(' '):
             if filter_.split():
-                filters.append(('*', 'contains', filter_))
+                filters.append(('identifier', 'contains', filter_))
         unique_name = 'searchWidget' + str(id(self))
 
         return {'name': unique_name, 'operator': self.space_operator(), 'filters': filters}

@@ -117,7 +117,7 @@ class FilterByMenu(QMenu):
             return
 
         self._library = library
-        library.searchStarted.connect(self._on_search_init)
+        # library.searchStarted.connect(self._on_search_init)
 
     def name(self):
         """
@@ -195,22 +195,22 @@ class FilterByMenu(QMenu):
 
         # TODO: Check why this is not working
 
-        # filters = list()
-        #
-        # settings = self.settings()
-        # field = self._options.get('field')
-        # for name in settings:
-        #     checked = settings.get(name, True)
-        #     if not checked:
-        #         filters.append((field, 'not', name))
-        #
-        # query = {
-        #     'name': self.name(),
-        #     'operator': 'and',
-        #     'filters': filters
-        # }
-        #
-        # self.library().add_query(query)
+        filters = list()
+
+        settings = self.settings()
+        field = self._options.get('field')
+        for name in settings:
+            checked = settings.get(name, True)
+            if not checked:
+                filters.append((field, 'not', name))
+
+        query = {
+            'name': self.name(),
+            'operator': 'and',
+            'filters': filters
+        }
+
+        self.library().add_query(query)
 
     def _on_show_all_action_clicked(self):
         """

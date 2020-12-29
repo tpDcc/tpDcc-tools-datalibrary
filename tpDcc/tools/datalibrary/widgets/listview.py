@@ -162,8 +162,11 @@ class ViewerListView(mixinview.ViewerViewWidgetMixin, QListView):
         if event.isAccepted():
             QListView.mousePressEvent(self, event)
             if item:
-                # TODO: Check if this can cause weird crashes
-                item.setSelected(True)
+                # NOTE: This causes viewer tree widget selectionChanged signal to be emitted multiple times.
+                # NOTE: This causes that item preview widgets are created twice when selecting an item in the viewer.
+                # NOTE: For this reason, we block tree widgets signals before selecting the item
+                with qt_contexts.block_signals(self.tree_widget()):
+                    item.setSelected(True)
 
         self.endDrag()
         self._drag_start_pos = event.pos()

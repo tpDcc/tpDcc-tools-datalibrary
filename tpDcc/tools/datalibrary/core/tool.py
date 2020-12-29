@@ -8,17 +8,23 @@ Tool to manage DCC related data in an easy way.
 from __future__ import print_function, division, absolute_import
 
 import os
+import sys
+import logging
 
 from tpDcc.core import tool
-from tpDcc.libs.qt.widgets import toolset
 
-from tpDcc.libs.datalibrary.managers import data
+from tpDcc.tools.datalibrary.core import client
+from tpDcc.tools.datalibrary.core import toolset
 
-# Defines ID of the tool
-TOOL_ID = 'tpDcc-tools-datalibrary'
+LOGGER = logging.getLogger('tpDcc-tools-datalibrary')
 
 
 class DataLibraryTool(tool.DccTool, object):
+
+    ID = 'tpDcc-tools-datalibrary'
+    CLIENT_CLASS = client.DataLibraryClient
+    TOOLSET_CLASS = toolset.DataLibraryToolset
+
     def __init__(self, *args, **kwargs):
         super(DataLibraryTool, self).__init__(*args, **kwargs)
 
@@ -27,7 +33,8 @@ class DataLibraryTool(tool.DccTool, object):
         base_tool_config = tool.DccTool.config_dict(file_name=file_name)
         tool_config = {
             'name': 'Data Library',
-            'id': TOOL_ID,
+            'id': cls.ID,
+            'supported_dccs': {'maya': ['2017', '2018', '2019', '2020']},
             'icon': 'datalibrary',
             'tooltip': 'Tool to manage DCC related data in an easy way.',
             'tags': ['tpDcc', 'dcc', 'tool', 'data'],
@@ -43,18 +50,14 @@ class DataLibraryTool(tool.DccTool, object):
         return self.launch_frameless(*args, **kwargs)
 
 
-class DataLibraryToolset(toolset.ToolsetWidget, object):
-    ID = TOOL_ID
+if __name__ == '__main__':
+    import tpDcc.loader
+    from tpDcc.managers import tools
 
-    def __init__(self, *args, **kwargs):
-        super(DataLibraryToolset, self).__init__(*args, **kwargs)
+    tool_path = os.path.abspath(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))))
+    if tool_path not in sys.path:
+        sys.path.append(tool_path)
 
-        default_items_path = os.path.join(os.path.abspath(os.path.dirname(os.path.dirname(__file__))), 'items')
-        data.add_directory(default_items_path, 'tpDcc', do_reload=True)
-
-    def contents(self):
-
-        from tpDcc.tools.datalibrary.widgets import window
-
-        data_library_window = window.LibraryWindow(parent=self)
-        return [data_library_window]
+    tpDcc.loader.init()
+    tools.ToolsManager().launch_tool_by_id(DataLibraryTool.ID)
+    # tools.ToolsManager().launch_tool_by_id(consts.TOOL_ID)

@@ -17,11 +17,12 @@ from Qt.QtWidgets import QFrame, QTreeWidget, QTreeWidgetItem, QAbstractItemView
 from Qt.QtGui import QCursor, QColor, QPixmap, QPainter, QBrush
 
 from tpDcc.managers import resources
-from tpDcc.libs.python import path as path_utils
-from tpDcc.libs.qt.core import base, color, pixmap, menu, contexts as qt_contexts
+from tpDcc.libs.python import python, path as path_utils
+from tpDcc.libs.resources.core import color, pixmap
+from tpDcc.libs.qt.core import base, menu, contexts as qt_contexts
 from tpDcc.libs.qt.widgets import layouts, buttons, search
 
-LOGGER = logging.getLogger('tpDcc-tools-datalibrary')
+LOGGER = logging.getLogger('tpDcc-libs-datalibrary')
 
 
 class SidebarWidget(base.BaseWidget):
@@ -54,7 +55,8 @@ class SidebarWidget(base.BaseWidget):
         buttons_layout = layouts.HorizontalLayout(spacing=0, margins=(0, 0, 0, 0))
         self._title_button = buttons.BaseButton(parent=self)
         self._title_button.setIcon(resources.icon('reset'))
-        self._menu_button = buttons.BaseButton('...', parent=self)
+        self._menu_button = buttons.BaseButton(parent=self)
+        self._menu_button.setIcon(resources.icon('menu_dots'))
         buttons_layout.addWidget(self._title_button)
         buttons_layout.addStretch()
         buttons_layout.addWidget(self._menu_button)
@@ -114,8 +116,8 @@ class SidebarWidget(base.BaseWidget):
             return
 
         self._library = library
-        self._library.dataChanged.connect(self._on_data_changed)
-        self._on_data_changed()
+        # self._library.dataChanged.connect(self._on_data_changed)
+        # self._on_data_changed()
 
     def set_filter_visible(self, flag):
         """
@@ -148,12 +150,12 @@ class SidebarWidget(base.BaseWidget):
 
         for path in self.selected_paths():
             if self.is_recursive():
-                filter_ = ('folder', 'startswith', path + '/')
+                filter_ = ('path', 'startswith', path + '/')
                 filters.append(filter_)
-            filter_ = ('folder', 'is', path)
+            filter_ = ('path', 'not', path)
             filters.append(filter_)
         unique_name = 'sidebar_widget_' + str(id(self))
-        return {'name': unique_name, 'operator': 'or', 'filters': filters}
+        return {'name': unique_name, 'operator': 'and', 'filters': filters}
 
     # ============================================================================================================
     # TREE HELPERS FUNCTIONS
@@ -653,7 +655,7 @@ class SidebarTree(QTreeWidget):
         :param paths: list(str)
         """
 
-        paths = self._normalize_paths(paths)
+        paths = path_utils.normalize_paths(paths)
         items = self.items()
         for item in items:
             if path_utils.clean_path(item.path()) in paths:
@@ -787,6 +789,12 @@ class SidebarTree(QTreeWidget):
                 for text, val in sorted(children.items()):
                     parent = parent or self
                     path = split.join([root, text]).replace('//', '/')
+
+                    # TODO: Maybe we should move this into a filter?
+                    # We do not show special folders that starts with '.'
+                    if text.startswith('.'):
+                        continue
+
                     child = SidebarTreeItem(parent)
                     child.setText(0, str(text))
                     child.set_path(path)
@@ -994,7 +1002,7 @@ class SidebarTreeItem(QTreeWidgetItem):
 
         if isinstance(text_color, QColor):
             text_color = color.Color.from_color(text_color)
-        elif isinstance(text_color, (str, unicode)):
+        elif python.is_string(text_color):
             text_color = color.Color.from_string(text_color)
         self._settings['textColor'] = text_color.to_string()
         brush = QBrush()
@@ -1107,7 +1115,7 @@ class SidebarTreeItem(QTreeWidgetItem):
         if icon_color:
             if isinstance(icon_color, QColor):
                 icon_color = color.Color.from_color(icon_color)
-            elif isinstance(icon_color, (str, unicode)):
+            elif python.is_string(icon_color):
                 icon_color = color.Color.from_string(icon_color)
             self._icon_color = icon_color.to_string()
         else:
@@ -1255,6 +1263,9 @@ class SidebarTreeItem(QTreeWidgetItem):
         :param color: str or QColor
         :return: QPixmap
         """
+
+        if not path:
+            return QPixmap()
 
         dpi = self.treeWidget().dpi()
         key = path + color + 'DPI-' + str(dpi)
