@@ -15,7 +15,7 @@ from tpDcc.libs.datalibrary.data import folder
 
 from tpDcc.tools.datalibrary.core.views import item
 from tpDcc.tools.datalibrary.data import base, folder as folder_view
-from tpDcc.tools.datalibrary.widgets import load, save
+from tpDcc.tools.datalibrary.widgets import load, save, export
 
 
 class _MetaItemsFactory(type):
@@ -70,6 +70,9 @@ class BaseItemsFactory(plugin.PluginFactory):
 
     def get_load_widget_class(self, data_instance):
         return load.LoadWidget
+
+    def get_export_widget_class(self, data_instance):
+        return export.ExportWidget
 
 
 @decorators.add_metaclass(_MetaItemsFactory)
