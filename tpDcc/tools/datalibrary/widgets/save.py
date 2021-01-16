@@ -17,7 +17,7 @@ from Qt.QtWidgets import QSizePolicy, QFrame, QDialogButtonBox, QFileDialog
 from tpDcc import dcc
 from tpDcc.managers import resources
 from tpDcc.libs.resources.core import theme
-from tpDcc.libs.python import decorators, version, folder as folder_utils
+from tpDcc.libs.python import decorators
 from tpDcc.libs.qt.core import base, qtutils
 from tpDcc.libs.qt.widgets import layouts, label, buttons, formwidget, messagebox, snapshot
 
@@ -50,9 +50,12 @@ class BaseSaveWidget(base.BaseWidget, object):
     cancelled = Signal()
     saved = Signal()
 
-    def __init__(self, item_view, *args, **kwargs):
+    ENABLE_THUMBNAIL_CAPTURE = True
+
+    def __init__(self, item_view, client=None, *args, **kwargs):
 
         self._item_view = item_view
+        self._client = client
         self._form_widget = None
         self._sequence_widget = None
 
@@ -84,14 +87,23 @@ class BaseSaveWidget(base.BaseWidget, object):
         title_widget.setLayout(title_layout)
         title_buttons_layout = layouts.HorizontalLayout(spacing=0, margins=(0, 0, 0, 0))
         title_layout.addLayout(title_buttons_layout)
+        title_icon = label.BaseLabel(parent=self)
         title_button = label.BaseLabel(self.item().menu_name(), parent=self)
         title_button.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         self._menu_button = buttons.BaseButton(parent=self)
         self._menu_button.setIcon(resources.icon('menu_dots'))
         self._menu_button.setVisible(False)     # Hide by default
+        title_buttons_layout.addWidget(title_icon)
+        title_buttons_layout.addSpacing(5)
         title_buttons_layout.addWidget(title_button)
         title_buttons_layout.addWidget(self._menu_button)
         title_frame_layout.addWidget(title_widget)
+
+        item_icon_name = self.item().icon() or 'tpDcc'
+        item_icon = resources.icon(item_icon_name)
+        if not item_icon:
+            item_icon = resources.icon('tpDcc')
+        title_icon.setPixmap(item_icon.pixmap(QSize(20, 20)))
 
         thumbnail_layout = layouts.HorizontalLayout(spacing=0, margins=(0, 0, 0, 0))
         self._thumbnail_frame = QFrame(self)
@@ -106,12 +118,12 @@ class BaseSaveWidget(base.BaseWidget, object):
         preview_buttons_frame = QFrame(self)
         self._preview_buttons_layout = layouts.HorizontalLayout(spacing=0, margins=(4, 2, 4, 2))
         preview_buttons_frame.setLayout(self._preview_buttons_layout)
-        self._accept_button = buttons.BaseButton('Save', parent=self)
-        self._accept_button.setIcon(resources.icon('save'))
+        self._save_button = buttons.BaseButton('Save', parent=self)
+        self._save_button.setIcon(resources.icon('save'))
         self._cancel_button = buttons.BaseButton('Cancel', parent=self)
         self._cancel_button.setIcon(resources.icon('cancel'))
         self._preview_buttons_layout.addStretch()
-        self._preview_buttons_layout.addWidget(self._accept_button)
+        self._preview_buttons_layout.addWidget(self._save_button)
         self._preview_buttons_layout.addStretch()
         self._preview_buttons_layout.addWidget(self._cancel_button)
         self._preview_buttons_layout.addStretch()
@@ -123,7 +135,7 @@ class BaseSaveWidget(base.BaseWidget, object):
 
     def setup_signals(self):
         self._menu_button.clicked.connect(self._on_show_menu)
-        self._accept_button.clicked.connect(self._on_save)
+        self._save_button.clicked.connect(self._on_save)
         self._cancel_button.clicked.connect(self._on_cancel)
 
     def resizeEvent(self, event):
@@ -393,28 +405,49 @@ class BaseSaveWidget(base.BaseWidget, object):
         if not self.library_window():
             return False
 
+        library = self.library_window().library()
+        if not library:
+            return False
+
         try:
             self.form_widget().validate()
             if self.form_widget().has_errors():
                 raise Exception('\n'.join(self.form_widget().errors()))
             has_frames = self._sequence_widget.has_frames()
-            if not has_frames:
+            if not has_frames and self.ENABLE_THUMBNAIL_CAPTURE:
                 button = self.show_thumbnail_capture_dialog()
                 if button == QDialogButtonBox.Cancel:
                     return False
             name = self.form_widget().value('name')
             folder = self.form_widget().value('folder')
             comment = self.form_widget().value('comment') or ''
+
+            extension = self.item().extension()
+            if extension and not name.endswith(extension):
+                name = '{}{}'.format(name, extension)
+
             path = folder + '/' + name
             thumbnail = self._sequence_widget.first_frame()
 
-            save_item = self.item().__class__(path, self.library_window().library())
+            save_item = library.get(path, only_extension=True)
             save_function = save_item.functionality().get('save')
             if not save_function:
                 LOGGER.warning('Item "{}" does not supports save operation'.format(save_item))
                 return False
+
+            library_path = self.item().library.identifier
+            if not library_path or not os.path.isfile(library_path):
+                LOGGER.warning('Impossible to save data "{}" because its library does not exists: "{}"'.format(
+                    self.item(), library_path))
+                return
+
+            values = self.form_widget().values()
             try:
-                res = save_function()
+                if self._client:
+                    _, _, dependencies = self._client().save_data(
+                        library_path=library_path, data_path=path, values=values)
+                else:
+                    dependencies = save_function(**values)
             except Exception as exc:
                 messagebox.MessageBox.critical(self.library_window(), 'Error while saving', str(exc))
                 LOGGER.error(traceback.format_exc())
@@ -425,15 +458,27 @@ class BaseSaveWidget(base.BaseWidget, object):
             LOGGER.error(traceback.format_exc())
             raise
 
-        # TODO: Should we save new versions of dependencies too?
-        valid = save_item.create_version(name=name, comment=comment)
-        if not valid:
-            LOGGER.warning('Impossible to store new version for data "{}"'.format(save_item))
+        new_item_path = save_item.format_identifier()
+        if not new_item_path or not os.path.isfile(new_item_path):
+            LOGGER.warning('Although saving process for item "{}" was completed, '
+                           'it seems no new data has been generated!'.format(save_item))
+            self.saved.emit()
+            return False
+
+        save_item.library.add(new_item_path)
+
+        # # TODO: Instead of creating a local version, we will use a git system to upload our data to our project repo
+        # # TODO: Should we save new versions of dependencies too?
+        # valid = save_item.create_version(comment=comment)
+        # if not valid:
+        #     LOGGER.warning('Impossible to store new version for data "{}"'.format(save_item))
 
         if thumbnail and os.path.isfile(thumbnail):
             save_item.store_thumbnail(thumbnail)
 
         self.library_window().sync()
+
+        save_item.update_dependencies(dependencies=dependencies)
 
         self.saved.emit()
 

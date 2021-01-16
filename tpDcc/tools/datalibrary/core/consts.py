@@ -9,6 +9,7 @@ from __future__ import print_function, division, absolute_import
 
 from Qt.QtGui import QColor
 
+TOOL_ID = 'tpDcc-tools-datalibrary'
 
 DEFAULT_LIBRARY_NAME = 'Default'
 DEFAULT_RECURSIVE_SEARCH_ENABLED = False

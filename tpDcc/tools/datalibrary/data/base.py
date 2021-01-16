@@ -15,7 +15,7 @@ from Qt.QtWidgets import QApplication, QAction
 
 from tpDcc import dcc
 from tpDcc.managers import resources
-from tpDcc.libs.python import decorators
+from tpDcc.libs.python import decorators, path as path_utils
 
 from tpDcc.tools.datalibrary.core.views import dataitem
 
@@ -73,11 +73,16 @@ class BaseDataItemView(dataitem.DataItemView):
         :param item_view: LibraryItem or None
         """
 
+        library = library_window.library()
+        if not library:
+            LOGGER.warning('Impossible to save data because library is not defined!')
+            return
+
         save_widget_class = library_window.factory.get_save_widget_class(item_class)
         if not save_widget_class:
             LOGGER.warning(
                 'Impossible to create new item of type "{}" because no save widget implementation defined!'.format(
-                    cls.__name__))
+                    item_class.__name__))
             return
 
         item_path = library_window.selected_folder_path()
@@ -85,15 +90,54 @@ class BaseDataItemView(dataitem.DataItemView):
             item_path = library_window.path()
 
         if not item_view:
-            item_data = item_class(item_path, library_window.library())
+            # NOTE: Here we generate a temporal file name to generate the proper composite data
+            temp_item_path = path_utils.join_path(item_path, '__temp__{}'.format(item_class.EXTENSION))
+            item_data = library.get(temp_item_path, only_extension=True)
             item_view_class = library_window.factory.get_view(item_data)
             item_view = item_view_class(item_data, library_window=library_window)
 
-        widget = save_widget_class(item_view=item_view, parent=library_window)
+        widget = save_widget_class(item_view=item_view, client=library_window.client, parent=library_window)
         widget.set_folder_path(item_path)
         widget.set_library_window(library_window)
-        library_window.set_create_widget(widget)
+        library_window.set_save_widget(widget)
         library_window.folderSelectionChanged.connect(widget.set_folder_path)
+
+    @classmethod
+    def show_export_widget(cls, item_class, data_path, library_window):
+        """
+        Function used to show the export widget of the current item
+        :param data_path: DataItem
+        :param library_window: LibraryWindow
+        """
+
+        library = library_window.library()
+        if not library:
+            LOGGER.warning('Impossible to export data because library is not defined!')
+            return
+
+        export_widget_class = library_window.factory.get_export_widget_class(item_class)
+        if not export_widget_class:
+            LOGGER.warning(
+                'Impossible to export item of type "{}" because no export widget implementation defined!'.format(
+                    item_class.__name__))
+            return
+
+        if not data_path or not os.path.isfile(data_path):
+            LOGGER.warning('Impossible to export item "{}" because its path does not exists: "{}"'.format(
+                item_class, data_path))
+            return
+
+        item_data = library.get(data_path, only_extension=True)
+        if not item_data:
+            LOGGER.warning('Impossible to export data "{}" because was not found!'.format(data_path))
+            return
+
+        item_view_class = library_window.factory.get_view(item_data)
+        item_view = item_view_class(item_data, library_window=library_window)
+
+        widget = export_widget_class(item_view=item_view, parent=library_window)
+        widget.set_library_window(library_window)
+        library_window.set_export_widget(widget)
 
     def double_clicked(self):
         """

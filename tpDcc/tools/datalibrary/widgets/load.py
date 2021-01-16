@@ -20,6 +20,7 @@ from tpDcc.libs.python import decorators
 from tpDcc.libs.qt.core import base
 from tpDcc.libs.qt.widgets import layouts, label, group, buttons, formwidget, dividers, history
 
+from tpDcc.tools.datalibrary.data import base as base_data
 from tpDcc.tools.datalibrary.widgets import sequence
 
 LOGGER = logging.getLogger('tpDcc-libs-datalibrary')
@@ -43,9 +44,10 @@ class _MetaLoadWidget(type):
 
 
 class BaseLoadWidget(base.BaseWidget, object):
-    def __init__(self, item_view, parent=None):
+    def __init__(self, item_view, client=None, parent=None):
 
         self._item_view = item_view
+        self._client = client
         self._form_widget = None
         self._sequence_widget = None
 
@@ -60,6 +62,10 @@ class BaseLoadWidget(base.BaseWidget, object):
             LOGGER.exception(error)
 
         self.update_thumbnail_size()
+
+        item = self.item()
+        if item:
+            self._accept_button.setVisible(bool(item.functionality().get('load', False)))
 
     # ============================================================================================================
     # OVERRIDES
@@ -81,13 +87,21 @@ class BaseLoadWidget(base.BaseWidget, object):
         title_widget.setLayout(title_layout)
         title_buttons_layout = layouts.HorizontalLayout(spacing=0, margins=(0, 0, 0, 0))
         title_layout.addLayout(title_buttons_layout)
+        title_icon = label.BaseLabel(parent=self)
         title_button = label.BaseLabel(self.item().label(), parent=self)
         title_button.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         self._menu_button = buttons.BaseButton(parent=self)
         self._menu_button.setIcon(resources.icon('menu_dots'))
+        title_buttons_layout.addWidget(title_icon)
         title_buttons_layout.addWidget(title_button)
         title_buttons_layout.addWidget(self._menu_button)
         title_frame_layout.addWidget(title_widget)
+
+        item_icon_name = self.item().icon() or 'tpDcc'
+        item_icon = resources.icon(item_icon_name)
+        if not item_icon:
+            item_icon = resources.icon('tpDcc')
+        title_icon.setPixmap(item_icon.pixmap(QSize(20, 20)))
 
         main_frame = QFrame(self)
         main_frame_layout = layouts.VerticalLayout(spacing=0, margins=(0, 0, 0, 0))
@@ -134,6 +148,21 @@ class BaseLoadWidget(base.BaseWidget, object):
         preview_buttons_layout.addWidget(self._accept_button)
         preview_buttons_layout.addStretch()
 
+        self._export_btn = buttons.BaseButton('Export', parent=self)
+        self._export_btn.setIcon(resources.icon('export'))
+        self._import_btn = buttons.BaseButton('Import', parent=self)
+        self._import_btn.setIcon(resources.icon('import'))
+        self._reference_btn = buttons.BaseButton('Reference', parent=self)
+        self._reference_btn.setIcon(resources.icon('reference'))
+        for btn in [self._export_btn, self._import_btn, self._reference_btn]:
+            btn.setToolTip(btn.text())
+        extra_buttons_frame = QFrame(self)
+        extra_buttons_layout = layouts.HorizontalLayout(spacing=2, margins=(0, 0, 0, 0))
+        extra_buttons_frame.setLayout(extra_buttons_layout)
+        extra_buttons_layout.addWidget(self._export_btn)
+        extra_buttons_layout.addWidget(self._import_btn)
+        extra_buttons_layout.addWidget(self._reference_btn)
+
         group_box = group.GroupBoxWidget('Icon', icon_frame)
         group_box.set_persistent(True)
         group_box.set_checked(True)
@@ -163,10 +192,14 @@ class BaseLoadWidget(base.BaseWidget, object):
         self.main_layout.addStretch()
         self.main_layout.addWidget(dividers.Divider())
         self.main_layout.addWidget(self._preview_buttons_frame)
+        self.main_layout.addWidget(extra_buttons_frame)
 
     def setup_signals(self):
         self._menu_button.clicked.connect(self._on_show_menu)
         self._accept_button.clicked.connect(self._on_load)
+        self._export_btn.clicked.connect(self._on_export)
+        self._import_btn.clicked.connect(self._on_import)
+        self._reference_btn.clicked.connect(self._on_reference)
         self._item_view.loadValueChanged.connect(self._on_item_value_changed)
 
     def resizeEvent(self, event):
@@ -259,13 +292,78 @@ class BaseLoadWidget(base.BaseWidget, object):
         Internal callback function that is called when Load button is pressed by the user
         """
 
-        # self.item().load_from_current_values()
-
         load_function = self.item().functionality().get('load')
         if not load_function:
+            LOGGER.warning('Load functionality is not available for data: "{}"'.format(self.item()))
             return
 
-        load_function()
+        library_path = self.item().library.identifier
+        if not library_path or not os.path.isfile(library_path):
+            LOGGER.warning('Impossible to load data "{}" because its library does not exists: "{}"'.format(
+                self.item(), library_path))
+            return
+
+        if self._client:
+            self._client().load_data(library_path=library_path, data_path=self.item().format_identifier())
+        else:
+            load_function()
+
+    def _on_export(self):
+        """
+        Internal callback function that is called when export button is pressed by the user
+        """
+
+        item = self.item()
+        if not item:
+            return
+
+        library_window = self.item_view().library_window()
+        if not library_window:
+            return
+
+        base_data.BaseDataItemView.show_export_widget(item.__class__, item.format_identifier(), library_window)
+
+    def _on_import(self):
+        """
+        Internal callback function that is called when import button is pressed by the user
+        """
+
+        import_function = self.item().functionality().get('import_data')
+        if not import_function:
+            LOGGER.warning('Import functionality is not available for data: "{}"'.format(self.item()))
+            return
+
+        library_path = self.item().library.identifier
+        if not library_path or not os.path.isfile(library_path):
+            LOGGER.warning('Impossible to load data "{}" because its library does not exists: "{}"'.format(
+                self.item(), library_path))
+            return
+
+        if self._client:
+            self._client().import_data(library_path=library_path, data_path=self.item().format_identifier())
+        else:
+            import_function()
+
+    def _on_reference(self):
+        """
+        Internal callback function that is called when reference button is pressed by the user
+        """
+
+        reference_function = self.item().functionality().get('reference_data')
+        if not reference_function:
+            LOGGER.warning('Reference functionality is not available for data: "{}"'.format(self.item()))
+            return
+
+        library_path = self.item().library.identifier
+        if not library_path or not os.path.isfile(library_path):
+            LOGGER.warning('Impossible to load data "{}" because its library does not exists: "{}"'.format(
+                self.item(), library_path))
+            return
+
+        if self._client:
+            self._client().reference_data(library_path=library_path, data_path=self.item().format_identifier())
+        else:
+            reference_function()
 
     def _on_item_value_changed(self, field, value):
         """

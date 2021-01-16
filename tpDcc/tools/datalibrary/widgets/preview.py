@@ -50,15 +50,23 @@ class PreviewWidget(base.BaseWidget, object):
         title_widget.setLayout(title_layout)
         buttons_layout = layouts.HorizontalLayout(spacing=0, margins=(0, 0, 0, 0))
         title_layout.addLayout(buttons_layout)
+        self._title_icon = label.BaseLabel(parent=self)
         self._title_button = label.ElidedLabel(parent=self)
         self._title_button.setText(self.item().name())
         self._menu_button = buttons.BaseButton(parent=self)
         self._menu_button.setIcon(resources.icon('menu_dots'))
+        buttons_layout.addWidget(self._title_icon)
         buttons_layout.addStretch()
         buttons_layout.addWidget(self._title_button)
         buttons_layout.addStretch()
         buttons_layout.addWidget(self._menu_button)
         title_frame_layout.addWidget(title_widget)
+
+        item_icon_name = self.item().icon() or 'tpDcc'
+        item_icon = resources.icon(item_icon_name)
+        if not item_icon:
+            item_icon = resources.icon('tpDcc')
+        self._title_icon.setPixmap(item_icon.pixmap(QSize(20, 20)))
 
         icon_title_frame = QFrame(self)
         icon_title_frame_layout = layouts.VerticalLayout(spacing=0, margins=(4, 2, 4, 2))

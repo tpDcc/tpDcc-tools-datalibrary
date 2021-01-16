@@ -33,9 +33,13 @@ class DataLibraryToolset(toolset.ToolsetWidget, object):
                 continue
             paths_to_register.append(item_path)
 
+        library = self._data_library_window.library()
+        if not library:
+            return
+
         for path_to_register in paths_to_register:
-            self._data_library_window.library().register_plugin_path(path_to_register)
+            library.register_plugin_path(path_to_register)
 
     def contents(self):
-        self._data_library_window = window.LibraryWindow(settings=self.settings, parent=self)
+        self._data_library_window = window.LibraryWindow(settings=self.settings, parent=self, client=self._client)
         return [self._data_library_window]

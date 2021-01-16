@@ -117,7 +117,7 @@ class FilterByMenu(QMenu):
             return
 
         self._library = library
-        # library.searchStarted.connect(self._on_search_init)
+        library.searchStarted.connect(self._on_search_init)
 
     def name(self):
         """

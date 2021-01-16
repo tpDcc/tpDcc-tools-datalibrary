@@ -102,35 +102,96 @@ class DataLibraryClient(client.DccClient, object):
 
         return reply_dict['success']
 
-    def save_dcc_file(self, file_path):
+    def save_data(self, library_path, data_path, values=None):
         """
-        Stores current DCC scene in given file path
-        :param file_path: str
+        Saves given data in given library
+        :param library_path: str
+        :param data_path: str
+        :param values: values, dict or None
+        :return:
         """
 
         cmd = {
-            'cmd': 'save_dcc_file',
-            'file_path': file_path
+            'cmd': 'save_data',
+            'library_path': library_path,
+            'data_path': data_path,
+            'values': values or dict()
+        }
+
+        reply_dict = self.send(cmd)
+
+        return reply_dict['success'], reply_dict.get('msg', ''), reply_dict['result']
+
+    def export_data(self, library_path, data_path, values=None):
+        """
+        Exports given data in given library
+        :param library_path: str
+        :param data_path: str
+        :param values: values, dict or None
+        :return:
+        """
+
+        cmd = {
+            'cmd': 'export_data',
+            'library_path': library_path,
+            'data_path': data_path,
+            'values': values or dict()
+        }
+
+        reply_dict = self.send(cmd)
+
+        return reply_dict['success'], reply_dict.get('msg', ''), reply_dict['result']
+
+    def load_data(self, library_path, data_path):
+        """
+        Loads given path in given library
+        :param library_path: str
+        :param data_path: str
+        :return:
+        """
+
+        cmd = {
+            'cmd': 'load_data',
+            'library_path': library_path,
+            'data_path': data_path
         }
 
         reply_dict = self.send(cmd)
 
         return reply_dict['success'], reply_dict.get('msg', '')
 
-    def import_dcc_file(self, file_path):
+    def import_data(self, library_path, data_path):
         """
-        Imports given DCC scene file into current DCC scene
-        :param file_path: str
+        Imports given path in given library
+        :param library_path: str
+        :param data_path: str
+        :return:
         """
 
         cmd = {
-            'cmd': 'import_dcc_file',
-            'file_path': file_path
+            'cmd': 'import_data',
+            'library_path': library_path,
+            'data_path': data_path
         }
 
         reply_dict = self.send(cmd)
 
-        if not self.is_valid_reply(reply_dict):
-            return False
+        return reply_dict['success'], reply_dict.get('msg', '')
 
-        return reply_dict['success']
+    def reference_data(self, library_path, data_path):
+        """
+        References given path in given library
+        :param library_path: str
+        :param data_path: str
+        :return:
+        """
+
+        cmd = {
+            'cmd': 'reference_data',
+            'library_path': library_path,
+            'data_path': data_path
+        }
+
+        reply_dict = self.send(cmd)
+
+        return reply_dict['success'], reply_dict.get('msg', '')

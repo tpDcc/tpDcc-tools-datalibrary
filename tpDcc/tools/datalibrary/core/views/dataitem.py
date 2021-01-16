@@ -210,7 +210,7 @@ class DataItemView(item.ItemView):
 
         load_widget_class = self.library_window().factory.get_load_widget_class(self.item.__class__)
         if load_widget_class:
-            widget = load_widget_class(item_view=self)
+            widget = load_widget_class(item_view=self, client=self.library_window().client)
 
         return widget
 
@@ -320,25 +320,33 @@ class DataItemView(item.ItemView):
                 if not move_function:
                     self.show_error_dialog('Delete Error', 'Item "{}" does not supports move operation'.format(self))
                     return
-                # source = self.item.format_identifier()
-                # if os.path.isdir(source):
-                #     target = path_utils.join_path(target, os.path.basename(source))
+                source = self.item.format_identifier()
+                if os.path.isdir(source):
+                    target = path_utils.join_path(target, os.path.basename(source))
                 move_function(target)
             except Exception as exc:
                 self.show_exception_dialog('Move Error', exc, traceback.format_exc())
                 raise
 
-    def show_delete_dialog(self):
+    def show_delete_dialog(self, dependencies=False):
         """
         Shows the delete item dialog
         """
 
-        button = self.show_question_dialog('Delete Item', 'Are you sure you want to delete this item?')
+        dialog_message = 'Are you sure you want to delete this item?' if not \
+            dependencies else 'Are you sure you want to delete this item and all its dependencies?'
+
+        button = self.show_question_dialog('Delete Item', dialog_message)
         if button == QDialogButtonBox.Yes:
             try:
-                delete_function = self.item.functionality().get('delete')
+                if dependencies:
+                    delete_function = self.item.functionality().get('delete_with_dependencies')
+                else:
+                    delete_function = self.item.functionality().get('delete')
                 if not delete_function:
-                    self.show_error_dialog('Delete Error', 'Item "{}" does not supports delete operation'.format(self))
+                    error_message = 'Item "{}" does not supports delete operation' if \
+                        not dependencies else 'Item "{}" does not supports delete with dependencies operation'
+                    self.show_error_dialog('Delete Error', error_message.format(self))
                     return
                 delete_function()
 
@@ -412,8 +420,11 @@ class DataItemView(item.ItemView):
         if self.is_deletable():
             delete_action = QAction(resources.icon('delete'), 'Delete', menu)
             delete_action.triggered.connect(self._on_show_delete_dialog)
+            delete_with_dependencies_action = QAction(resources.icon('delete'), 'Delete with Dependencies', menu)
+            delete_with_dependencies_action.triggered.connect(self._on_show_delete_with_dependencies_dialog)
             menu.addSeparator()
             menu.addAction(delete_action)
+            menu.addAction(delete_with_dependencies_action)
 
         self.create_overwrite_menu(menu)
 
@@ -502,6 +513,13 @@ class DataItemView(item.ItemView):
         """
 
         self.show_delete_dialog()
+
+    def _on_show_delete_with_dependencies_dialog(self):
+        """
+        Internal callback function that is called when Delte with Dependencies action is clicked
+        """
+
+        self.show_delete_dialog(dependencies=True)
 
     def _on_overwrite(self):
         """

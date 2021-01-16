@@ -91,9 +91,11 @@ class LibraryWindow(base.BaseWidget):
     folderSelectionChanged = Signal(object)
 
     def __init__(
-            self, settings, name='', items_factory=None, json_settings_file_path='', library_path='',  parent=None):
+            self, settings, name='', items_factory=None,
+            json_settings_file_path='', library_path='',  client=None, parent=None):
 
         self._dpi = 1.0
+        self._client = client
         self._settings = settings
         self._name = name or self.DEFAULT_NAME
         self._items = list()
@@ -127,21 +129,19 @@ class LibraryWindow(base.BaseWidget):
 
         super(LibraryWindow, self).__init__(parent)
 
-        # TODO: THIS IS FOR DEV
-        library_path = r'D:\rigs\rigscript\chimp\data.db'
+        # # TODO: THIS IS FOR DEV
+        # library_path = r'D:\rigs\rigscript\chimp\data.db'
         self.set_library(library_path or self._settings.get('last_path'))
-
-        self.set_refresh_enabled(True)
-
-        self.update_view_button()
-        self.update_filters_button()
-        self.update_preview_widget()
 
         self.set_dpi(1.0)
 
     # ============================================================================================================
     # PROPERTIES
     # ============================================================================================================
+
+    @property
+    def client(self):
+        return None if not self._client else self._client
 
     @property
     def factory(self):
@@ -265,15 +265,18 @@ class LibraryWindow(base.BaseWidget):
         :return: QAction
         """
 
-        if not item_class.menu_name():
+        if not item_class.MENU_NAME:
             return
 
         show_save_widget = library_window.factory.get_show_save_widget_function(item_class)
 
         icon_name = os.path.splitext(item_class.MENU_ICON)[0] if item_class.MENU_ICON else None
+        icon_name = icon_name or 'tpDcc'
         action_icon = resources.icon(icon_name) if icon_name else QIcon()
+        if action_icon.isNull():
+            action_icon = resources.icon('tpDcc')
         callback = partial(show_save_widget, item_class, library_window)
-        action = QAction(action_icon, item_class.menu_name(), menu)
+        action = QAction(action_icon, item_class.MENU_NAME, menu)
         action.triggered.connect(callback)
         menu.addAction(action)
 
@@ -305,40 +308,52 @@ class LibraryWindow(base.BaseWidget):
         :param library: str or DataLibrary
         """
 
+        if self._library and library and self._library == library:
+            return
+
         if python.is_string(library):
-            if self._library and library == self._library.identifier:
-                return
-
-            if not library:
-                LOGGER.warning('Given library path "{}" does not exists!'.format(library))
-                return
-
-            if not os.path.isfile(library):
-                self._library = self.LIBRARY_CLASS.create(library)
-            else:
-                self._library = self.LIBRARY_CLASS.load(library)
-            self._library.add_scan_location(path_utils.clean_path(os.path.join(os.path.dirname(library))))
+            if not self._library or library != self._library.identifier:
+                if not library:
+                    LOGGER.warning('Given library path "{}" does not exists!'.format(library))
+                else:
+                    if not os.path.isfile(library):
+                        self._library = self.LIBRARY_CLASS.create(library)
+                    else:
+                        self._library = self.LIBRARY_CLASS.load(library)
+                    self._library.add_scan_location(path_utils.clean_path(os.path.join(os.path.dirname(library))))
         else:
             self._library = library
 
-        plugin_locations = self._library.plugin_locations() or list()
+        if self._library:
+            plugin_locations = self._library.plugin_locations() or list()
 
-        # Create factory to hold all available item views
-        if not self._items_factory:
-            self._items_factory = factory.ItemsFactory(paths=plugin_locations)
+            # Create factory to hold all available item views
+            if not self._items_factory:
+                self._items_factory = factory.ItemsFactory(paths=plugin_locations)
 
-        self._path = path_utils.clean_path(os.path.dirname(self.database_path()))
+            self._path = path_utils.clean_path(os.path.dirname(self.database_path()))
 
-        self._library.sync()
+            # This is very time consuming, we should avoid calling this
+            self._library.sync()
 
-        self._sort_by_menu.set_library(self._library)
-        self._group_by_menu.set_library(self._library)
-        self._filter_by_menu.set_library(self._library)
-        self._viewer.set_library(self._library)
-        self._search_widget.set_library(self._library)
-        self._sidebar_widget.set_library(self._library)
+            # Add some default queries
+            self._library.add_query(
+                {'name': 'invalid extensions', 'operator': 'and', 'filters': [('extension', 'not', '.pyc')]}
+            )
 
-        self._library.dataChanged.connect(self.refresh)
+            self._sort_by_menu.set_library(self._library)
+            self._group_by_menu.set_library(self._library)
+            self._filter_by_menu.set_library(self._library)
+            self._viewer.set_library(self._library)
+            self._search_widget.set_library(self._library)
+            self._sidebar_widget.set_library(self._library)
+
+            self._library.dataChanged.connect(self.refresh)
+
+        self.set_refresh_enabled(True)
+        self.update_view_button()
+        self.update_filters_button()
+        self.update_preview_widget()
 
     def database_path(self):
         """
@@ -367,7 +382,8 @@ class LibraryWindow(base.BaseWidget):
 
         self._path = path
 
-        library = self.library()
+        if not self._library:
+            self.set_library(self._path)
 
         if not os.path.exists(self.database_path()):
             self.sync()
@@ -399,7 +415,11 @@ class LibraryWindow(base.BaseWidget):
         :param flag: bool
         """
 
-        self.library().set_search_enabled(flag)
+        library = self.library()
+        if not library:
+            return
+
+        library.set_search_enabled(flag)
         self._refresh_enabled = flag
 
     def is_recursive_search_enabled(self):
@@ -417,6 +437,27 @@ class LibraryWindow(base.BaseWidget):
         """
 
         self.sidebar_widget().set_recursive(flag)
+
+    def clean_library(self):
+        """
+        Cleans library data by removing files that are not being managed by database
+        NOTE: This is a destructive operation
+        :return:
+        """
+
+        if not self.library():
+            return
+
+        # TODO: This operation should only be available for superusers
+
+        res = messagebox.MessageBox.question(
+            self, 'Clean Library', 'This is a destructive operation. Files and folders not being managed by database '
+                                   'will be removed. Is recommended to backup your data before proceeding with this '
+                                   'operation. Are you sure you want to continue?')
+        if res != QDialogButtonBox.Yes:
+            return
+
+        self.library().cleanup()
 
     def superusers(self):
         """
@@ -859,7 +900,13 @@ class LibraryWindow(base.BaseWidget):
         current_data = dict()
         root = self.path()
 
-        queries = [{'filters': [('folder', 'is', True)]}]
+        library = self.library()
+        if library:
+            root_identifier = self.library().get_identifier(root)
+            queries = [{'operator': 'and',
+                        'filters': [('folder', 'is', 'True'), ('directory', 'startswith', root_identifier)]}]
+        else:
+            queries = [{'filters': [('folder', 'is', 'True')]}]
 
         items = self.library().find_items(queries)
         for item in items:
@@ -1082,9 +1129,9 @@ class LibraryWindow(base.BaseWidget):
 
         self._preview_widget = None
 
-    def set_create_widget(self, create_widget):
+    def set_save_widget(self, create_widget):
         """
-        Set the widget that should be showed when creating a new item
+        Set the widget that should be showed when saving a new item
         :param create_widget: QWidget
         """
 
@@ -1096,6 +1143,21 @@ class LibraryWindow(base.BaseWidget):
         self.set_new_item_widget(create_widget)
         create_widget.cancelled.connect(partial(self._stack.slide_in_index, 0))
         create_widget.saved.connect(partial(self._stack.slide_in_index, 0))
+
+    def set_export_widget(self, export_widget):
+        """
+        Sets the widget that should be showed when exporting a new item
+        :param export_widget: QWidget
+        """
+
+        if not export_widget:
+            return
+
+        self.set_new_item_widget_visible(True)
+
+        self.set_new_item_widget(export_widget)
+        export_widget.cancelled.connect(partial(self._stack.slide_in_index, 0))
+        export_widget.saved.connect(partial(self._stack.slide_in_index, 0))
 
     # ============================================================================================================
     # NEW ITEM WIDGET
@@ -1565,7 +1627,7 @@ class LibraryWindow(base.BaseWidget):
             self.set_dpi(dpi)
 
             value = settings.get('library')
-            if value is not None:
+            if value is not None and self.library():
                 self.library().update_settings(value)
 
             sizes = settings.get('paneSizes')
@@ -1734,7 +1796,11 @@ class LibraryWindow(base.BaseWidget):
         menu.setIcon(item_icon)
         menu.setTitle('New')
 
-        all_sorted_data = sorted(list(self.library().get_all_data_plugins()), key=operator.attrgetter('PRIORITY'))
+        library = self.library()
+        if not library:
+            return
+
+        all_sorted_data = sorted(list(library.get_all_data_plugins()), key=operator.attrgetter('PRIORITY'))
 
         for data_item_class in all_sorted_data:
             action = self.create_action(data_item_class, menu, self)
@@ -1905,6 +1971,12 @@ class LibraryWindow(base.BaseWidget):
 
         context_menu.addSeparator()
 
+        cleanup_library_action = QAction(resources.icon('clean'), 'Clean Library', context_menu)
+        cleanup_library_action.triggered[bool].connect(self.clean_library)
+        context_menu.addAction(cleanup_library_action)
+
+        context_menu.addSeparator()
+
         view_menu = self.viewer().create_settings_menu()
         context_menu.addMenu(view_menu)
 
@@ -1925,7 +1997,9 @@ class LibraryWindow(base.BaseWidget):
         if not path:
             return
 
-        return path_utils.normalize_path(path)
+        data_path = path_utils.join_path(path, 'data.db')
+
+        return path_utils.clean_path(data_path)
 
     # ============================================================================================================
     # CALLBACKS
@@ -1939,6 +2013,8 @@ class LibraryWindow(base.BaseWidget):
         """
 
         new_menu = self._create_new_item_menu()
+        if not new_menu:
+            return
         point = self.toolbar_widget().mapToGlobal(self.toolbar_widget().rect().bottomLeft())
         new_menu.show()
 
@@ -2070,7 +2146,7 @@ class LibraryWindow(base.BaseWidget):
         """
 
         change_path_action = QAction(resources.icon('change'), 'Change Path', settings_menu)
-        change_path_action.triggered.connect(self._on_show_change_path_dialog)
+        change_path_action.triggered.connect(self.show_change_path_dialog)
         settings_menu.addAction(change_path_action)
         settings_menu.addSeparator()
 
