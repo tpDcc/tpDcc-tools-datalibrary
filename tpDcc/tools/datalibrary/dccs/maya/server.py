@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Module that contains tpDcc-tools-datalibrary server implementation
+Module that contains tpDcc-tools-datalibrary server implementation for Maya
 """
 
 from __future__ import print_function, division, absolute_import
@@ -12,27 +12,19 @@ import os
 import maya.cmds
 
 from tpDcc.core import server
+from tpDcc.libs.python import path as path_utils
+
+from tpDcc.libs.datalibrary.core import datalib
 
 
 class DataLibraryServer(server.DccServer, object):
 
     PORT = 28231
 
-    def _process_command(self, command_name, data_dict, reply_dict):
-        if command_name == 'load_data_items':
-            self.load_data_items(data_dict, reply_dict)
-        elif command_name == 'list_namespaces':
-            self.load_data_items(data_dict, reply_dict)
-        elif command_name == 'list_nodes':
-            self.list_nodes(data_dict, reply_dict)
-        elif command_name == 'set_focus':
-            self.set_focus(data_dict, reply_dict)
-        elif command_name == 'save_dcc_file':
-            self.save_dcc_file(data_dict, reply_dict)
-        elif command_name == 'import_dcc_file':
-            self.import_dcc_file(data_dict, reply_dict)
-        else:
-            super(DataLibraryServer, self)._process_command(command_name, data_dict, reply_dict)
+    def __init__(self, *args, **kwargs):
+        super(DataLibraryServer, self).__init__(*args, **kwargs)
+
+        self._data_library = None
 
     def load_data_items(self, data, reply):
 
@@ -55,7 +47,8 @@ class DataLibraryServer(server.DccServer, object):
         namespaces = list(set(namespaces) - set(exclude_list))
         namespaces = sorted(namespaces)
 
-        return namespaces
+        reply['result'] = namespaces
+        reply['success'] = True
 
     def list_nodes(self, data, reply):
 
@@ -87,29 +80,165 @@ class DataLibraryServer(server.DccServer, object):
 
         reply['success'] = True
 
-    def save_dcc_file(self, data, reply):
+    def save_data(self, data, reply):
+        library_path = data['library_path']
+        data_path = data['data_path']
+        values = data['values']
 
-        file_path = data['file_path']
+        if not library_path or not os.path.isfile(library_path):
+            reply['success'] = False
+            reply['message'] = 'Impossible to save data "{}" because library path "{}" does not exist!'.format(
+                data_path, library_path)
+            return
 
-        maya_type = 'mayaBinary' if file_path.endswith('.mb') else 'mayaAscii'
+        data_lib = self._get_data_library(library_path)
+        data_item = data_lib.get(data_path, only_extension=True)
+        if not data_item:
+            reply['success'] = False
+            reply['message'] = 'Impossible to retrieve data "{}" from data library: "{}"!'.format(data_path, data_lib)
+            return
 
-        # selection = maya.cmds.ls(sl=True)
-        # if selection:
-        #     maya.cmds.file(
-        #         file_path, type=maya_type, options='v=0;', preserveReferences=True, exportSelected=selection)
-        # else:
-        maya.cmds.file(rename=file_path)
-        maya.cmds.file(type=maya_type, options='v=0;', preserveReferences=True, save=True)
+        save_function = data_item.functionality().get('save')
+        if not save_function:
+            reply['success'] = False
+            reply['message'] = 'Save functionality is not available for data: "{}"'.format(data_item)
+            return
+
+        result = save_function(**values)
+
+        reply['success'] = True
+        reply['result'] = result
+
+    def export_data(self, data, reply):
+        library_path = data['library_path']
+        data_path = data['data_path']
+        values = data['values']
+
+        if not library_path or not os.path.isfile(library_path):
+            reply['success'] = False
+            reply['message'] = 'Impossible to export data "{}" because library path "{}" does not exist!'.format(
+                data_path, library_path)
+            return
+
+        data_lib = self._get_data_library(library_path)
+        data_item = data_lib.get(data_path, only_extension=True)
+        if not data_item:
+            reply['success'] = False
+            reply['message'] = 'Impossible to retrieve data "{}" from data library: "{}"!'.format(data_path, data_lib)
+            return
+
+        export_function = data_item.functionality().get('save')
+        if not export_function:
+            reply['success'] = False
+            reply['message'] = 'Export functionality is not available for data: "{}"'.format(data_item)
+            return
+
+        result = export_function(**values)
+
+        reply['success'] = True
+        reply['result'] = result
+
+    def load_data(self, data, reply):
+        library_path = data['library_path']
+        data_path = data['data_path']
+
+        if not library_path or not os.path.isfile(library_path):
+            reply['success'] = False
+            reply['message'] = 'Impossible to load data "{}" because library path "{}" does not exist!'.format(
+                data_path, library_path)
+            return
+
+        if not os.path.isfile(data_path):
+            reply['success'] = False
+            reply['message'] = 'Impossible to load data "{}" because it does not exist!'.format(data_path)
+            return
+
+        data_lib = self._get_data_library(library_path)
+        data_item = data_lib.get(data_path)
+        if not data_item:
+            reply['success'] = False
+            reply['message'] = 'Impossible to retrieve data "{}" from data library: "{}"!'.format(data_path, data_lib)
+            return
+
+        load_function = data_item.functionality().get('load')
+        if not load_function:
+            reply['success'] = False
+            reply['message'] = 'Load functionality is not available for data: "{}"'.format(data_item)
+            return
+
+        load_function()
 
         reply['success'] = True
 
-    def import_dcc_file(self, data, reply):
+    def import_data(self, data, reply):
+        library_path = data['library_path']
+        data_path = data['data_path']
 
-        file_path = data['file_path']
+        if not library_path or not os.path.isfile(library_path):
+            reply['success'] = False
+            reply['message'] = 'Impossible to import data "{}" because library path "{}" does not exist!'.format(
+                data_path, library_path)
+            return
 
-        maya_type = 'mayaBinary' if file_path.endswith('.mb') else 'mayaAscii'
+        if not os.path.isfile(data_path):
+            reply['success'] = False
+            reply['message'] = 'Impossible to import data "{}" because it does not exist!'.format(data_path)
+            return
 
-        maya.cmds.file(
-            file_path, i=True, type=maya_type, options='v=0;', preserveReferences=True, mergeNamespacesOnClash=False)
+        data_lib = self._get_data_library(library_path)
+        data_item = data_lib.get(data_path)
+        if not data_item:
+            reply['success'] = False
+            reply['message'] = 'Impossible to retrieve data "{}" from data library: "{}"!'.format(data_path, data_lib)
+            return
+
+        import_function = data_item.functionality().get('import_data')
+        if not import_function:
+            reply['success'] = False
+            reply['message'] = 'Import functionality is not available for data: "{}"'.format(data_item)
+            return
+
+        import_function()
 
         reply['success'] = True
+
+    def reference_data(self, data, reply):
+        library_path = data['library_path']
+        data_path = data['data_path']
+
+        if not library_path or not os.path.isfile(library_path):
+            reply['success'] = False
+            reply['message'] = 'Impossible to reference data "{}" because library path "{}" does not exist!'.format(
+                data_path, library_path)
+            return
+
+        if not os.path.isfile(data_path):
+            reply['success'] = False
+            reply['message'] = 'Impossible to reference data "{}" because it does not exist!'.format(data_path)
+            return
+
+        data_lib = self._get_data_library(library_path)
+        data_item = data_lib.get(data_path)
+        if not data_item:
+            reply['success'] = False
+            reply['message'] = 'Impossible to retrieve data "{}" from data library: "{}"!'.format(data_path, data_lib)
+            return
+
+        reference_function = data_item.functionality().get('reference_data')
+        if not reference_function:
+            reply['success'] = False
+            reply['message'] = 'Reference functionality is not available for data: "{}"'.format(data_item)
+            return
+
+        reference_function()
+
+        reply['success'] = True
+
+    def _get_data_library(self, library_path):
+        if self._data_library and path_utils.clean_path(
+                self._data_library.identifier) == path_utils.clean_path(library_path):
+            return self._data_library
+
+        self._data_library = datalib.DataLibrary.load(library_path)
+
+        return self._data_library
