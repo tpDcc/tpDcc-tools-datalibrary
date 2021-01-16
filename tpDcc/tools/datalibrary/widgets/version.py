@@ -48,7 +48,7 @@ class VersionHistoryTreeWidget(treewidgets.TreeWidget):
             item.setText(0, str(i+1))
             item.setText(1, commit_data.get('message', ''))
             item.setText(2, commit_data.get('author', ''))
-            item.setText(3, commits_data.get('date', ''))
+            item.setText(3, commit_data.get('date', ''))
             item.setText(4, commit)
             self.addTopLevelItem(item)
 
