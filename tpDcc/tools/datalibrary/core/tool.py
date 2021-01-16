@@ -12,16 +12,16 @@ import sys
 import logging
 
 from tpDcc.core import tool
+from tpDcc.core import dcc
 
-from tpDcc.tools.datalibrary.core import client
-from tpDcc.tools.datalibrary.core import toolset
+from tpDcc.tools.datalibrary.core import consts, client, toolset
 
-LOGGER = logging.getLogger('tpDcc-tools-datalibrary')
+LOGGER = logging.getLogger(consts.TOOL_ID)
 
 
 class DataLibraryTool(tool.DccTool, object):
 
-    ID = 'tpDcc-tools-datalibrary'
+    ID = consts.TOOL_ID
     CLIENT_CLASS = client.DataLibraryClient
     TOOLSET_CLASS = toolset.DataLibraryToolset
 
@@ -34,7 +34,10 @@ class DataLibraryTool(tool.DccTool, object):
         tool_config = {
             'name': 'Data Library',
             'id': cls.ID,
-            'supported_dccs': {'maya': ['2017', '2018', '2019', '2020']},
+            'supported_dccs': {
+                dcc.Dccs.Maya: ['2017', '2018', '2019', '2020'],
+                dcc.Dccs.Max: ['2017.0', '2018.0', '2019.0', '2020.0']
+            },
             'icon': 'datalibrary',
             'tooltip': 'Tool to manage DCC related data in an easy way.',
             'tags': ['tpDcc', 'dcc', 'tool', 'data'],
