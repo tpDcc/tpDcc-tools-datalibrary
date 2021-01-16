@@ -18,10 +18,11 @@ from tpDcc import dcc
 from tpDcc.managers import resources
 from tpDcc.libs.python import decorators
 from tpDcc.libs.qt.core import base
-from tpDcc.libs.qt.widgets import layouts, label, group, buttons, formwidget, dividers, history
+from tpDcc.libs.qt.widgets import layouts, label, group, buttons, formwidget, dividers
+from tpDcc.libs.datalibrary.core import version as data_version
 
 from tpDcc.tools.datalibrary.data import base as base_data
-from tpDcc.tools.datalibrary.widgets import sequence
+from tpDcc.tools.datalibrary.widgets import sequence, version
 
 LOGGER = logging.getLogger('tpDcc-libs-datalibrary')
 
@@ -66,6 +67,7 @@ class BaseLoadWidget(base.BaseWidget, object):
         item = self.item()
         if item:
             self._accept_button.setVisible(bool(item.functionality().get('load', False)))
+            self._update_version_info()
 
     # ============================================================================================================
     # OVERRIDES
@@ -132,7 +134,7 @@ class BaseLoadWidget(base.BaseWidget, object):
         version_frame = QFrame(self)
         version_frame_layout = layouts.VerticalLayout(spacing=0, margins=(0, 0, 0, 0))
         version_frame.setLayout(version_frame_layout)
-        self._versions_widget = history.HistoryFileWidget(parent=self)
+        self._versions_widget = version.VersionHistoryWidget(parent=self)
         version_frame_layout.addWidget(self._versions_widget)
 
         self._custom_widget_frame = QFrame(self)
@@ -169,6 +171,7 @@ class BaseLoadWidget(base.BaseWidget, object):
 
         version_box = group.GroupBoxWidget('Version', version_frame)
         version_box.set_persistent(True)
+        version_box.set_checked(True)
 
         self._sequence_widget = sequence.ImageSequenceWidget(self)
         thumbnail_frame_layout.insertWidget(0, self._sequence_widget)
@@ -268,6 +271,38 @@ class BaseLoadWidget(base.BaseWidget, object):
         self._sequence_widget.setIconSize(size)
         self._sequence_widget.setMaximumSize(size)
         self._thumbnail_frame.setMaximumSize(size)
+
+    # ============================================================================================================
+    # INTERNAL
+    # ============================================================================================================
+
+    def _update_version_info(self):
+        item_view = self.item_view()
+        if not item_view or not item_view.library_window():
+            return
+
+        library_window = item_view.library_window()
+        if not library_window:
+            return
+
+        repository_type = library_window.get_repository_type()
+        repository_path = library_window.get_repository_path()
+        if not repository_type or not repository_path:
+            return
+
+        try:
+            repository_type = int(repository_type)
+        except Exception:
+            repository_type = 0
+
+        if repository_type == 0:
+            repository_type = None
+        elif repository_type == 1:
+            repository_type = data_version.GitVersionControl
+
+        self._versions_widget.set_version_control_class(repository_type)
+        self._versions_widget.set_repository_path(repository_path)
+        self._versions_widget.set_directory(self.item().format_identifier())
 
     # ============================================================================================================
     # CALLBACKS

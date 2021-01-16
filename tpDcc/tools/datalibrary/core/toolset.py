@@ -11,11 +11,15 @@ import os
 
 from tpDcc.libs.qt.widgets import toolset
 from tpDcc.tools.datalibrary.widgets import window
+from tpDcc.tools.datalibrary.widgets import settings
 
 
 class DataLibraryToolset(toolset.ToolsetWidget, object):
     def __init__(self, *args, **kwargs):
         super(DataLibraryToolset, self).__init__(*args, **kwargs)
+
+        self._repository_widget = settings.DataRepositoryWidget(parent=self._preferences_widget)
+        self._preferences_widget.add_category(self._repository_widget.CATEGORY, self._repository_widget)
 
     @property
     def library_window(self):

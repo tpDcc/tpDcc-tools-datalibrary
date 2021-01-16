@@ -110,6 +110,8 @@ class LibraryWindow(base.BaseWidget):
         self._kwargs = dict()
         self._path = None
         self._menu_items = list()
+        self._repository_type = None
+        self._repository_path = ''
 
         self._preview_widget = None
         self._new_item_widget = None
@@ -695,6 +697,29 @@ class LibraryWindow(base.BaseWidget):
         self.show_toast_message('DPI: {}'.format(int(dpi * 100)))
 
         # self.reload_stylesheet()
+
+    # ============================================================================================================
+    # VERSION
+    # ============================================================================================================
+
+    def get_repository_type(self):
+        if self._repository_type:
+            return self._repository_type
+
+        if not self._settings:
+            return None
+
+        return self._settings.get('version_control', default_value=0, setting_group='Version', begin_group='Repository')
+
+    def get_repository_path(self):
+        if not self._library:
+            return None
+
+        library_path = self._library.identifier
+        if not os.path.isfile(library_path):
+            return None
+
+        return os.path.dirname(library_path)
 
     # ============================================================================================================
     # LOCK / UNLOCK
