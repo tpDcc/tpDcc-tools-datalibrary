@@ -135,7 +135,7 @@ class BaseDataItemView(dataitem.DataItemView):
         item_view_class = library_window.factory.get_view(item_data)
         item_view = item_view_class(item_data, library_window=library_window)
 
-        widget = export_widget_class(item_view=item_view, parent=library_window)
+        widget = export_widget_class(item_view=item_view, client=library_window.client, parent=library_window)
         widget.set_library_window(library_window)
         library_window.set_export_widget(widget)
 

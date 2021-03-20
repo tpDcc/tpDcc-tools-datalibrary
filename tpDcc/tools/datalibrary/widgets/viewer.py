@@ -15,7 +15,7 @@ from Qt.QtWidgets import QApplication, QStyledItemDelegate, QAbstractItemView, Q
 from Qt.QtGui import QCursor, QColor
 
 from tpDcc.managers import resources
-from tpDcc.libs.qt.core import base, contexts as qt_contexts
+from tpDcc.libs.qt.core import base, qtutils, contexts as qt_contexts
 from tpDcc.libs.qt.widgets import layouts, toast, action
 
 from tpDcc.tools.datalibrary.core import consts
@@ -234,9 +234,14 @@ class DataViewer(base.BaseWidget):
         if library == self._library:
             return
 
+        if not library and self._library:
+            qtutils.safe_disconnect_signal(self._library.searchFinished)
+
         self._library = library
-        self.set_column_labels(library.field_names())
-        library.searchFinished.connect(self._on_update_items)
+
+        if self._library:
+            self.set_column_labels(library.field_names())
+            library.searchFinished.connect(self._on_update_items)
 
     def library_window(self):
         """
@@ -824,24 +829,27 @@ class DataViewer(base.BaseWidget):
 
             try:
                 self.clear_selection()
-                results = self.library().grouped_results()
-                item_views = list()
-                for group in results:
-                    if group != 'None':
-                        group_item = self.create_group_item(group)
-                        item_views.append(group_item)
-                    for item in results[group]:
-                        view_class = self.library_window().factory.get_view(item)
-                        if not view_class:
-                            continue
-                        item_view = view_class(item, library_window=self.library_window())
-                        item_views.append(item_view)
+                if self.library():
+                    results = self.library().grouped_results()
+                    item_views = list()
+                    for group in results:
+                        if group != 'None':
+                            group_item = self.create_group_item(group)
+                            item_views.append(group_item)
+                        for item in results[group]:
+                            view_class = self.library_window().factory.get_view(item)
+                            if not view_class:
+                                continue
+                            item_view = view_class(item, library_window=self.library_window())
+                            item_views.append(item_view)
 
-                if item_views:
-                    self.tree_widget().set_items(item_views)
-                    if selected_items:
-                        self.select_items(selected_items)
-                        self.scroll_to_selected_item()
+                    if item_views:
+                        self.tree_widget().set_items(item_views)
+                        if selected_items:
+                            self.select_items(selected_items)
+                            self.scroll_to_selected_item()
+                    else:
+                        self.clear()
                 else:
                     self.clear()
             finally:

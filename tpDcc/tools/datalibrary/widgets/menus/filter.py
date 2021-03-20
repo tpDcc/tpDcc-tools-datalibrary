@@ -116,8 +116,16 @@ class FilterByMenu(QMenu):
         if library == self._library:
             return
 
+        if not library and self._library:
+            try:
+                qtutils.safe_disconnect_signal(self._library.searchStarted)
+            except Exception as exc:
+                pass
+
         self._library = library
-        library.searchStarted.connect(self._on_search_init)
+
+        if self._library:
+            self._library.searchStarted.connect(self._on_search_init)
 
     def name(self):
         """
@@ -193,7 +201,9 @@ class FilterByMenu(QMenu):
         Internal callback function that is called before each search to update the filter men query
         """
 
-        # TODO: Check why this is not working
+        library = self.library()
+        if not library:
+            return
 
         filters = list()
 

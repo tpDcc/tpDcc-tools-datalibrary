@@ -169,9 +169,9 @@ class BaseLoadWidget(base.BaseWidget, object):
         group_box.set_persistent(True)
         group_box.set_checked(True)
 
-        version_box = group.GroupBoxWidget('Version', version_frame)
-        version_box.set_persistent(True)
-        version_box.set_checked(True)
+        self._version_box = group.GroupBoxWidget('Version', version_frame)
+        self._version_box.set_persistent(True)
+        self._version_box.set_checked(True)
 
         self._sequence_widget = sequence.ImageSequenceWidget(self)
         thumbnail_frame_layout.insertWidget(0, self._sequence_widget)
@@ -189,7 +189,7 @@ class BaseLoadWidget(base.BaseWidget, object):
         self.main_layout.addWidget(title_frame)
         self.main_layout.addWidget(group_box)
         self.main_layout.addWidget(main_frame)
-        self.main_layout.addWidget(version_box)
+        self.main_layout.addWidget(self._version_box)
         self.main_layout.addWidget(version_frame)
         self.main_layout.addWidget(self._custom_widget_frame)
         self.main_layout.addStretch()
@@ -302,7 +302,11 @@ class BaseLoadWidget(base.BaseWidget, object):
 
         self._versions_widget.set_version_control_class(repository_type)
         self._versions_widget.set_repository_path(repository_path)
-        self._versions_widget.set_directory(self.item().format_identifier())
+
+        # If not valid version control is defined, we hide version control
+        valid_version_control = self._versions_widget.set_directory(self.item().format_identifier())
+        self._versions_widget.setVisible(valid_version_control)
+        self._version_box.setVisible(valid_version_control)
 
     # ============================================================================================================
     # CALLBACKS

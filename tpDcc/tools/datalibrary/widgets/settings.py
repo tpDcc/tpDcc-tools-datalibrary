@@ -33,11 +33,6 @@ class DataRepositoryWidget(preferences.CategoryWidgetBase, object):
         self.main_layout.addLayout(version_control_layout)
         self.main_layout.addStretch()
 
-    def _fill_version_types_combo(self):
-        self._version_type_combo.clear()
-        for version_type in ['none', 'git']:
-            self._version_type_combo.addItem(resources.icon(version_type), version_type)
-
     def init_defaults(self, settings):
         if not settings:
             return
@@ -57,3 +52,12 @@ class DataRepositoryWidget(preferences.CategoryWidgetBase, object):
             return
 
         settings.set('version_control', self._version_type_combo.currentIndex(), setting_group='Version')
+
+    def _fill_version_types_combo(self):
+        """
+        Internal callback function that fills with the different types of supported version controls
+        """
+
+        self._version_type_combo.clear()
+        for version_type in ['none', 'git']:
+            self._version_type_combo.addItem(resources.icon(version_type), version_type)

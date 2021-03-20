@@ -87,7 +87,7 @@ class DataLibraryServer(server.DccServer, object):
 
         if not library_path or not os.path.isfile(library_path):
             reply['success'] = False
-            reply['message'] = 'Impossible to save data "{}" because library path "{}" does not exist!'.format(
+            reply['msg'] = 'Impossible to save data "{}" because library path "{}" does not exist!'.format(
                 data_path, library_path)
             return
 
@@ -95,13 +95,13 @@ class DataLibraryServer(server.DccServer, object):
         data_item = data_lib.get(data_path, only_extension=True)
         if not data_item:
             reply['success'] = False
-            reply['message'] = 'Impossible to retrieve data "{}" from data library: "{}"!'.format(data_path, data_lib)
+            reply['msg'] = 'Impossible to retrieve data "{}" from data library: "{}"!'.format(data_path, data_lib)
             return
 
         save_function = data_item.functionality().get('save')
         if not save_function:
             reply['success'] = False
-            reply['message'] = 'Save functionality is not available for data: "{}"'.format(data_item)
+            reply['msg'] = 'Save functionality is not available for data: "{}"'.format(data_item)
             return
 
         result = save_function(**values)

@@ -264,8 +264,9 @@ class BaseSaveWidget(base.BaseWidget, object):
         if width > 250:
             width = 250
         size = QSize(width, width)
-        self._sequence_widget.setIconSize(size)
-        self._sequence_widget.setMaximumSize(size)
+        if self._sequence_widget:
+            self._sequence_widget.setIconSize(size)
+            self._sequence_widget.setMaximumSize(size)
         self._thumbnail_frame.setMaximumSize(size)
 
     def show_thumbnail_capture_dialog(self):
@@ -444,8 +445,12 @@ class BaseSaveWidget(base.BaseWidget, object):
             values = self.form_widget().values()
             try:
                 if self._client:
-                    _, _, dependencies = self._client().save_data(
+                    success, message, dependencies = self._client().save_data(
                         library_path=library_path, data_path=path, values=values)
+                    if not success:
+                        messagebox.MessageBox.critical(self.library_window(), 'Error while saving', str(message))
+                        LOGGER.error(str(message))
+                        return False
                 else:
                     dependencies = save_function(**values)
             except Exception as exc:

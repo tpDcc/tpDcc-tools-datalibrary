@@ -313,6 +313,12 @@ class LibraryWindow(base.BaseWidget):
         if self._library and library and self._library == library:
             return
 
+        if not library and self._library:
+            try:
+                qtutils.safe_disconnect_signal(self._library.dataChanged)
+            except Exception as exc:
+                pass
+
         if python.is_string(library):
             if not self._library or library != self._library.identifier:
                 if not library:
@@ -343,14 +349,14 @@ class LibraryWindow(base.BaseWidget):
                 {'name': 'invalid extensions', 'operator': 'and', 'filters': [('extension', 'not', '.pyc')]}
             )
 
-            self._sort_by_menu.set_library(self._library)
-            self._group_by_menu.set_library(self._library)
-            self._filter_by_menu.set_library(self._library)
-            self._viewer.set_library(self._library)
-            self._search_widget.set_library(self._library)
-            self._sidebar_widget.set_library(self._library)
-
             self._library.dataChanged.connect(self.refresh)
+
+        self._sort_by_menu.set_library(self._library)
+        self._group_by_menu.set_library(self._library)
+        self._filter_by_menu.set_library(self._library)
+        self._viewer.set_library(self._library)
+        self._search_widget.set_library(self._library)
+        self._sidebar_widget.set_library(self._library)
 
         self.set_refresh_enabled(True)
         self.update_view_button()
@@ -711,6 +717,13 @@ class LibraryWindow(base.BaseWidget):
 
         return self._settings.get('version_control', default_value=0, setting_group='Version', begin_group='Repository')
 
+    def set_repository_type(self, repository_type_index):
+        try:
+            repository_type_index = int(repository_type_index)
+        except Exception:
+            return
+        self._repository_type = repository_type_index
+
     def get_repository_path(self):
         if not self._library:
             return None
@@ -922,16 +935,16 @@ class LibraryWindow(base.BaseWidget):
         Update the folders to be shown in the folders widget
         """
 
+        library = self.library()
+        if not library:
+            return
+
         current_data = dict()
         root = self.path()
 
-        library = self.library()
-        if library:
-            root_identifier = self.library().get_identifier(root)
-            queries = [{'operator': 'and',
-                        'filters': [('folder', 'is', 'True'), ('directory', 'startswith', root_identifier)]}]
-        else:
-            queries = [{'filters': [('folder', 'is', 'True')]}]
+        root_identifier = self.library().get_identifier(root)
+        queries = [{'operator': 'and',
+                    'filters': [('folder', 'is', 'True'), ('directory', 'startswith', root_identifier)]}]
 
         items = self.library().find_items(queries)
         for item in items:
