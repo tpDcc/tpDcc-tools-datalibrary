@@ -45,7 +45,7 @@ class VersionHistoryTreeWidget(treewidgets.TreeWidget):
         for i, (commit, commit_data) in enumerate(
                 ((commit, commits_data[commit]) for commit in reversed(commits_data))):
             item = QTreeWidgetItem()
-            item.setText(0, str(i+1))
+            item.setText(0, str(i + 1))
             item.setText(1, commit_data.get('message', ''))
             item.setText(2, commit_data.get('author', ''))
             item.setText(3, commit_data.get('date', ''))

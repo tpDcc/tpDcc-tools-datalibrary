@@ -31,7 +31,7 @@ from tpDcc.tools.datalibrary.core.views import item as items_view
 from tpDcc.tools.datalibrary.widgets import viewer, search, sidebar, status
 from tpDcc.tools.datalibrary.widgets.menus import filter, group, sort, libraries
 
-LOGGER = logging.getLogger('tpDcc-tools-datalibrary')
+logger = logging.getLogger(consts.TOOL_ID)
 
 
 class PreviewFrame(QFrame):
@@ -92,7 +92,7 @@ class LibraryWindow(base.BaseWidget):
 
     def __init__(
             self, settings, name='', items_factory=None,
-            json_settings_file_path='', library_path='',  client=None, parent=None):
+            json_settings_file_path='', library_path='', client=None, parent=None):
 
         self._dpi = 1.0
         self._client = client
@@ -322,7 +322,7 @@ class LibraryWindow(base.BaseWidget):
         if python.is_string(library):
             if not self._library or library != self._library.identifier:
                 if not library:
-                    LOGGER.warning('Given library path "{}" does not exists!'.format(library))
+                    logger.warning('Given library path "{}" does not exists!'.format(library))
                 else:
                     if not os.path.isfile(library):
                         self._library = self.LIBRARY_CLASS.create(library)
@@ -1080,7 +1080,7 @@ class LibraryWindow(base.BaseWidget):
 
         if self._preview_widget == widget:
             msg = 'Preview widget already contains widget {}'.format(widget)
-            LOGGER.debug(msg)
+            logger.debug(msg)
         else:
             self.close_preview_widget()
             self._preview_widget = widget
@@ -1127,7 +1127,7 @@ class LibraryWindow(base.BaseWidget):
         """
 
         if not force and self._current_item == item:
-            LOGGER.debug('The current item preview widget is already set!')
+            logger.debug('The current item preview widget is already set!')
             return
 
         self._current_item = item
@@ -1217,7 +1217,7 @@ class LibraryWindow(base.BaseWidget):
 
         if self._new_item_widget == widget:
             msg = 'New Item widget already contains widget {}'.format(widget)
-            LOGGER.debug(msg)
+            logger.debug(msg)
         else:
             self.close_new_item_widget()
             self._new_item_widget = widget
@@ -1468,7 +1468,7 @@ class LibraryWindow(base.BaseWidget):
         msg = 'Found {0} item{1} in {2:.3f} seconds.'.format(item_count, plural, elapsed_time)
         self.status_widget().show_info_message(msg)
 
-        LOGGER.debug(msg)
+        logger.debug(msg)
 
     @qt_decorators.show_arrow_cursor
     def show_hello_dialog(self):
@@ -1548,7 +1548,7 @@ class LibraryWindow(base.BaseWidget):
         :return: QDialogButtonBox.StandardButton
         """
 
-        LOGGER.exception(text)
+        logger.exception(text)
         self.show_error_dialog(title, text)
 
     # ============================================================================================================
