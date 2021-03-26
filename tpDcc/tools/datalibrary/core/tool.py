@@ -9,14 +9,10 @@ from __future__ import print_function, division, absolute_import
 
 import os
 import sys
-import logging
 
-from tpDcc.core import tool
-from tpDcc.core import dcc
+from tpDcc.core import dcc, tool
 
 from tpDcc.tools.datalibrary.core import consts, client, toolset
-
-LOGGER = logging.getLogger(consts.TOOL_ID)
 
 
 class DataLibraryTool(tool.DccTool, object):
